@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional
-import torch.optim as optim
-from src.model.resnet import ResNet, Bottleneck,BasicBlock
+from torch import Tensor
+from torch.optim import Optimizer,AdamW
+from src.backbone.resnet import ResNet, Bottleneck,BasicBlock
 
 INPUT_SIZE = 105
 USE_SCAE_WEIGHTS = True
@@ -17,7 +18,7 @@ class Encoder(nn.Module):
         self.max_pool = nn.MaxPool2d(kernel_size=2)
         self.conv2 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
 
-    def forward(self, X):
+    def forward(self, X:Tensor)->Tensor:
         X = F.relu(self.conv1(X))  # output shape: 64 * 48 * 48
         X = self.batch_norm(X)
         X = self.max_pool(X)  # output shape: 64 * 24 * 24
@@ -34,7 +35,7 @@ class Decoder(nn.Module):
         self.batch_norm = nn.BatchNorm2d(64)
         self.deconv2 = nn.ConvTranspose2d(64, 1, kernel_size=58)
 
-    def forward(self, X):
+    def forward(self, X:Tensor)->Tensor:
         X = F.relu(self.deconv1(X))  # output shape: 64 * 24 * 24
         X = self.batch_norm(X)
         X = self.unpool(X)  # output shape: 64 * 48 * 48
@@ -49,13 +50,13 @@ class SCAE(nn.Module):
         self.encoder = Encoder()
         self.decoder = Decoder()
 
-    def forward(self, X):
+    def forward(self, X:Tensor)->Tensor:
         X = self.encoder(X)
         X = self.decoder(X)
 
         return X
 
-    def load_weights(self, path):
+    def _load_weights(self, path:str)->None:
         # Load the state_dict
         state_dict = torch.load(path)
 
@@ -125,13 +126,13 @@ class CNN(nn.Module):
         else:
             self.cls_head = nn.Identity()
 
-    def forward(self, X):
+    def forward(self, X:Tensor)->Tensor:
         X = self.Cu(X)
         X = self.Cs(X)
         X = self.cls_head(X)
         return X
 
-    def load_weights(self, path):
+    def _load_weights(self, path)->None:
         # Load the state_dict
         state_dict = torch.load(path)
 
@@ -141,14 +142,18 @@ class CNN(nn.Module):
             state_dict = {k[7:]: v for k, v in state_dict.items()}
         self.load_state_dict(state_dict)
 
-    def get_optimizer(self, lr: float):
-        cnn_optimizer = optim.AdamW(
+    def _get_optimizer(self, lr: float)->Optimizer:
+        cnn_optimizer = AdamW(
             [
                 {'params': self.Cu.parameters(), 'lr': lr * self.finetune_ratio_Cu},
                 {'params': self.Cs.parameters(), 'lr': lr},
             ],
         )
         return cnn_optimizer
+    
+    @property
+    def name(self)->str:
+        return 'CNN'
 
 
 class FontResNet(nn.Module):
@@ -170,20 +175,18 @@ class FontResNet(nn.Module):
         # Classification layer
         self.fc = nn.Linear(self.resnet_.fc.in_features, num_classes)
         
-    def forward(self, x):
-        x = self.resnet(x)
-        x = torch.flatten(x, 1)
-        # x = self.embedding(x)
-        x = self.fc(x)
-        return F.softmax(x, dim=1)
+    def forward(self, X:Tensor)->Tensor:
+        X = self.resnet(X)
+        X = torch.flatten(X, 1)
+        # X = self.embedding(X)
+        X = self.fc(X)
+        return F.softmax(X, dim=1)
     
-    def get_optimizer(self, lr: float):
-        return optim.AdamW(self.parameters(), lr=lr)
+    def _get_optimizer(self, lr: float)->Optimizer:
+        return AdamW(self.parameters(), lr=lr)
     
-    def save_weights(self, path):
-        torch.save(self.state_dict(), path)
     
-    def load_weights(self, path):
+    def _load_weights(self, path:str)->None:
         # Load the state_dict
         state_dict = torch.load(path)
 
@@ -192,3 +195,7 @@ class FontResNet(nn.Module):
             # If it was parallelized, we need to remove the 'module.' prefix from keys
             state_dict = {k[7:]: v for k, v in state_dict.items()}
         self.load_state_dict(state_dict)
+        
+    @property
+    def name(self)->str:
+        return 'ResNet'

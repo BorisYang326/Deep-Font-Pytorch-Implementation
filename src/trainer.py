@@ -2,178 +2,183 @@ import torch
 from tqdm import tqdm
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
+from torch.nn import functional as F
+from torch.optim import Optimizer
+import torch.nn as nn
+from typing import Optional
+from torch.utils.data import DataLoader
+
+LOG_STEP = 100
+
 
 class Trainer:
-    def __init__(self, model, optimizer, criterion, device,save_path=None):
-        self.model = model.to(device)
-        self.optimizer = optimizer
-        self.criterion = criterion
-        self.device = device
-        self.save_path = save_path
+    def __init__(
+        self,
+        model: nn.Module,
+        optimizer: Optimizer,
+        criterion: F,
+        device: torch.device,
+        train_loader: DataLoader,
+        eval_loader: Optional[DataLoader] = None,
+        save_path: Optional[str] = None,
+    ):
+        self._model = model.to(device)
+        self._optimizer = optimizer
+        self._criterion = criterion
+        self._device = device
+        self._train_loader = train_loader
+        self._eval_loader = eval_loader
+        self._save_path = save_path
+        self._log_step = LOG_STEP
 
-    def _train(self, train_loader, epochs):
+    def _train(self, epochs: int):
         raise NotImplementedError
 
-    def _train_epoch(self, train_loader):
+    def _train_epoch(self):
         raise NotImplementedError
-    
+
     def _save_weights(self):
-        torch.save(self.model.state_dict(), self.save_path)
-        print("Saved model weights at {}".format(self.save_path))
-    
-    def _get_model(self):
-        return self.model
+        torch.save(self._model.state_dict(), self._save_path)
+        print("Saved model weights at {}".format(self._save_path))
+
+    # @property
+    # def model(self) -> nn.Module:
+    #     return self._model
+
+    # @property
+    # def optimzer(self) -> Optimizer:
+    #     return self._optimizer
+
+    # @property
+    # def criterion(self) -> F:
+    #     return self._criterion
+
+    # @property
+    # def device(self) -> torch.device:
+    #     return self._device
 
 
 class SCAETrainer(Trainer):
-    def __init__(self, model, optimizer, criterion, device, save_path=None):
-        super().__init__(model, optimizer, criterion, device, save_path)
-    def _train(self, train_loader, epochs):
+    def __init__(
+        self,
+        model: nn.Module,
+        optimizer: Optimizer,
+        criterion: F,
+        device: torch.device,
+        train_loader: DataLoader,
+        save_path: str,
+    ):
+        super().__init__(model, optimizer, criterion, device, train_loader, save_path)
+
+    def _train(self, epochs: int):
         for epoch in range(epochs):
             loss_ = []
-            for images in tqdm(train_loader):
+            for images in tqdm(self._train_loader):
                 if isinstance(images, list):
                     # For VFR-syn-train dataset.
                     images = images[0]
-                images = images.to(self.device)
-                outputs = self.model(images)
-                
-                loss = self.criterion(outputs, images)
-                
-                self.optimizer.zero_grad()
+                images = images.to(self._device)
+                outputs = self._model(images)
+
+                loss = self._criterion(outputs, images)
+
+                self._optimizer.zero_grad()
                 loss.backward()
-                self.optimizer.step()
+                self._optimizer.step()
                 loss_.append(loss.item())
-                
+
             print(f"Epoch [{epoch+1}/{epochs}], Loss: {np.mean(loss_):.4f}")
 
 
-class CNNTrainer(Trainer):
-    def __init__(self, model, optimizer, criterion, device, eval_loader, save_path=None, log_dir='./runs'):
-        super().__init__(model, optimizer, criterion, device, save_path=save_path)
-        self.eval_loader = eval_loader
-        self.writer = SummaryWriter(log_dir=log_dir)
+class SupervisedTrainer(Trainer):
+    def __init__(
+        self,
+        model: nn.Module,
+        optimizer: Optimizer,
+        criterion: F,
+        device: torch.device,
+        train_loader: DataLoader,
+        eval_loader: DataLoader,
+        save_path: str,
+        log_dir: str = './runs',
+    ):
+        super().__init__(
+            model,
+            optimizer,
+            criterion,
+            device,
+            train_loader,
+            eval_loader,
+            save_path=save_path,
+        )
+        self._writer = SummaryWriter(log_dir=log_dir)
 
-    def _train(self, train_loader, epochs):
-        best_acc = torch.inf  
+    def _train(self, epochs: int):
+        best_acc = torch.inf
         for epoch in range(epochs):
-            self._train_epoch(train_loader, epoch)
-            test_acc = self._evaluate(self.eval_loader, epoch)
-            self.writer.add_scalar('Test Accuracy', test_acc, epoch)
+            self._train_epoch(epoch)
+            test_acc = self._evaluate(epoch)
+            self._writer.add_scalar('Test Accuracy', test_acc, epoch)
             print(f"Test accuracy: {test_acc:.4f} at epoch {epoch+1}.")
             if test_acc < best_acc:
-                self._save_weights()
+                self._save_weights(epoch)
                 best_acc = test_acc
-            if epoch % 10 == 0:
-                self._save_weights(epoch)
+            # if epoch % 10 == 0:
+            # self._save_weights(epoch)
 
-    def _train_epoch(self, train_loader, epoch):
-        self.model.train()
-        pbar = tqdm(enumerate(train_loader), total=len(train_loader))
+    def _train_epoch(self, epoch: int):
+        self._model.train()
+        pbar = tqdm(enumerate(self._train_loader), total=len(self._train_loader))
         for idx, (images, labels) in pbar:
-            images, labels = images.to(self.device), labels.to(self.device)
+            images, labels = images.to(self._device), labels.to(self._device)
             with torch.set_grad_enabled(True):
-                outputs = self.model(images)
-                loss = self.criterion(outputs, labels)
-                self.optimizer.zero_grad()
+                outputs = self._model(images)
+                loss = self._criterion(outputs, labels)
+                self._optimizer.zero_grad()
                 loss.backward()
-                self.optimizer.step()
+                self._optimizer.step()
             pbar.set_description(f"Loss: {loss.item():.4f}")
-            
+
             # Log the loss to TensorBoard
-            self.writer.add_scalar('Training Loss', loss.item(), epoch * len(train_loader) + idx)
-            
+            self._writer.add_scalar(
+                'Training Loss', loss.item(), epoch * len(self._train_loader) + idx
+            )
+
             # Every 20 steps, log the gradient histograms
-            if idx % 20 == 0:
-                for name, param in self.model.named_parameters():
+            if idx % self._log_step == 0:
+                for name, param in self._model.named_parameters():
                     if param.grad is not None:
-                        self.writer.add_histogram(f"{name}.grad", param.grad, epoch * len(train_loader) + idx)
+                        self._writer.add_histogram(
+                            f"{name}.grad",
+                            param.grad,
+                            epoch * len(self._train_loader) + idx,
+                        )
 
-
-    def _evaluate(self, eval_loader, epoch):
-        self.model.eval()
+    def _evaluate(self, epoch: int) -> float:
+        self._model.eval()
         total_loss = 0
         with torch.no_grad():
-            pbar = tqdm(enumerate(eval_loader), total=len(eval_loader))
+            pbar = tqdm(
+                enumerate(
+                    self._eval_loader,
+                ),
+                total=len(
+                    self._eval_loader,
+                ),
+            )
             for idx, (images, labels) in pbar:
-                images, labels = images.to(self.device), labels.to(self.device)
-                outputs = self.model(images)
-                loss = self.criterion(outputs, labels)
+                images, labels = images.to(self._device), labels.to(self._device)
+                outputs = self._model(images)
+                loss = self._criterion(outputs, labels)
                 total_loss += loss.item()
-                
+
                 # Log the evaluation loss to TensorBoard
                 # self.writer.add_scalar('Evaluation Loss', loss.item(), epoch * len(eval_loader) + idx)
-                
-        avg_loss = total_loss / len(eval_loader)
+
+        avg_loss = total_loss / len(self._eval_loader)
         return avg_loss
-    
-    def _save_weights(self,epoch):
-        path = self.save_path + f'cnn_weights_{epoch}.pth'
-        torch.save(self.model.state_dict(), path)
-        print("Saved model weights at {}".format(path))
 
-    
-class FontResNetTrainer(Trainer):
-    def __init__(self, model, optimizer, criterion, device, eval_loader, save_path=None, log_dir='./runs/resnet'):
-        super().__init__(model, optimizer, criterion, device, save_path=save_path)
-        # self.eval_loader = eval_loader
-        self.writer = SummaryWriter(log_dir=log_dir)
-
-    def _train(self, train_loader, epochs):
-        # best_acc = torch.inf  
-        for epoch in range(epochs):
-            self._train_epoch(train_loader, epoch)
-            # test_acc = self._evaluate(self.eval_loader, epoch)
-            # self.writer.add_scalar('Test Accuracy', test_acc, epoch)
-            # print(f"Test accuracy: {test_acc:.4f} at epoch {epoch+1}.")
-            # if test_acc < best_acc:
-            #     self._save_weights()
-            #     best_acc = test_acc
-            if epoch % 5 == 0:
-                self._save_weights(epoch)
-            
-
-    def _train_epoch(self, train_loader, epoch):
-        self.model.train()
-        pbar = tqdm(enumerate(train_loader), total=len(train_loader))
-        for idx, (images, labels) in pbar:
-            images, labels = images.to(self.device), labels.to(self.device)
-            with torch.set_grad_enabled(True):
-                outputs = self.model(images)
-                loss = self.criterion(outputs, labels)
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
-            pbar.set_description(f"Loss: {loss.item():.4f}")
-            
-            # Log the loss to TensorBoard
-            self.writer.add_scalar('Training Loss', loss.item(), epoch * len(train_loader) + idx)
-            
-            # Every 20 steps, log the gradient histograms
-            if idx % 20 == 0:
-                for name, param in self.model.named_parameters():
-                    if param.grad is not None:
-                        self.writer.add_histogram(f"{name}.grad", param.grad, epoch * len(train_loader) + idx)
-
-
-    def _evaluate(self, eval_loader, epoch):
-        self.model.eval()
-        total_loss = 0
-        with torch.no_grad():
-            pbar = tqdm(enumerate(eval_loader), total=len(eval_loader))
-            for idx, (images, labels) in pbar:
-                images, labels = images.to(self.device), labels.to(self.device)
-                outputs = self.model(images)
-                loss = self.criterion(outputs, labels)
-                total_loss += loss.item()
-                
-                # Log the evaluation loss to TensorBoard
-                # self.writer.add_scalar('Evaluation Loss', loss.item(), epoch * len(eval_loader) + idx)
-                
-        avg_loss = total_loss / len(eval_loader)
-        return avg_loss
-    
-    def _save_weights(self,epoch):
-        path = self.save_path + f'resnet_weights_{epoch}.pth'
-        torch.save(self.model.state_dict(), path)
+    def _save_weights(self, epoch: int):
+        path = self._save_path + f'{self._model.name}_weights_{epoch}.pth'
+        torch.save(self._model.state_dict(), path)
         print("Saved model weights at {}".format(path))
