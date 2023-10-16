@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional
 import torch.optim as optim
-from resnet import ResNet, Bottleneck,BasicBlock
+from src.model.resnet import ResNet, Bottleneck,BasicBlock
 
 INPUT_SIZE = 105
 USE_SCAE_WEIGHTS = True
