@@ -1,6 +1,6 @@
 *.pth
 *.png
 *.jpg
-/runs
+src/runs
 /.vscode
-/__pycache__
+*.pyc
