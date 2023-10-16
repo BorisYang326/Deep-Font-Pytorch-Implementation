@@ -17,7 +17,7 @@
             "name": "Python: Eval",
             "type": "python",
             "request": "launch",
-            "program": "eval.py",
+            "program": "src/eval.py",
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -33,7 +33,7 @@
             "name": "Python: Train",
             "type": "python",
             "request": "launch",
-            "program": "main.py",
+            "program": "src/main.py",
             "console": "integratedTerminal",
             "justMyCode": false
         }

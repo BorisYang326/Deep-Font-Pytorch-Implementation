@@ -200,9 +200,8 @@ class RandomTransforms(torch.nn.Module):
                 x = t(x)
         return x
 
-
-def transform_pipeline(squeeze_ratio: int = SQUEEZE_RATIO) -> transforms.Compose:
-    assert isinstance(squeeze_ratio, int), 'squeeze_ratio must be an integer.'
+def transform_pipeline(squeeze_ratio: float = SQUEEZE_RATIO) -> transforms.Compose:
+    assert isinstance(squeeze_ratio, float), 'squeeze_ratio must be a float.'
     all_transforms = [
         # Add Gaussian noise
         GaussianNoise(0.0, 3),
@@ -274,7 +273,7 @@ TRANSFORMS_SQUEEZE = transforms.Compose(
     ]
 )
 
-TRANSFORMS_CNN = transform_pipeline()
+# TRANSFORMS_CNN = transform_pipeline()
 
 # img = Image.open('./test_images/syn/2123129.png')
 # img_crop = TRANSFORMS_CROP(img)

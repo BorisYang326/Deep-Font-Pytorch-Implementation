@@ -1,18 +1,21 @@
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader,random_split
 from model import FontResNet
 from dataset import VFRRealUDataset, VFRSynDataset
-from trainer import FontClsTrainer
+from trainer import SupervisedTrainer
 from torch.utils.data import ConcatDataset
 from preprocess import TRANSFORMS_SQUEEZE
 
-VFR_real_u_path = (
-    '/public/dataset/AdobeVFR/AdobeVFR/Raw Image/VFR_real_u/scrape-wtf-new'
-)
-VFR_syn_train_path = '/public/dataset/AdobeVFR/AdobeVFR/Raw Image/VFR_syn_train'
-VFR_syn_val_path = '/public/dataset/AdobeVFR/AdobeVFR/Raw Image/VFR_syn_val'
-VFR_syn_font_list_path = '/public/dataset/AdobeVFR/AdobeVFR/font_list.txt'
+# VFR_real_u_path = (
+#     '/public/dataset/AdobeVFR/Raw Image/VFR_real_u/scrape-wtf-new'
+# )
+VFR_syn_train_path = '/public/dataset/AdobeVFR/Raw Image/VFR_syn_train'
+#############
+# adobeVFR syn_val(from .bcf) part is wrong matched.So we use syn_train to split train/val.
+#############
+# VFR_syn_val_path = '/public/dataset/AdobeVFR/AdobeVFR/Raw Image/VFR_syn_val'
+VFR_syn_font_list_path = '/public/dataset/AdobeVFR/fontlist.txt'
 scae_weights_path = './weights/scae_weights.pth'
 cls_weights_path = './weights/'
 
@@ -27,32 +30,32 @@ PREFETCH_FACTOR = 2
 
 if __name__ == '__main__':
     ## Dataset ##
-    scae_real_dataset = VFRRealUDataset(
-        root_dir=VFR_real_u_path, transform=TRANSFORMS_SQUEEZE
-    )
-    scae_syn_dataset = VFRSynDataset(
-        root_dir=VFR_syn_train_path,
-        font_list_path=VFR_syn_font_list_path,
-    )
+    # scae_real_dataset = VFRRealUDataset(
+    #     root_dir=VFR_real_u_path, transform=TRANSFORMS_SQUEEZE
+    # )
+    # scae_syn_dataset = VFRSynDataset(
+    #     root_dir=VFR_syn_train_path,
+    #     font_list_path=VFR_syn_font_list_path,
+    # )
 
-    combined_scae_dataset = ConcatDataset([scae_real_dataset, scae_syn_dataset])
-    supervised_train_dataset = VFRSynDataset(
+    # combined_scae_dataset = ConcatDataset([scae_real_dataset, scae_syn_dataset])
+    supervised_dataset = VFRSynDataset(
         root_dir=VFR_syn_train_path,
+        font_list_path = VFR_syn_font_list_path,
         transform=TRANSFORMS_SQUEEZE,
     )
-    supervised_eval_dataset = VFRSynDataset(
-        root_dir=VFR_syn_val_path,
-        transform=TRANSFORMS_SQUEEZE,
-    )
+    train_size = int(0.9 * len(supervised_dataset))
+    eval_size = len(supervised_dataset) - train_size
+    supervised_train_dataset,supervised_eval_dataset = random_split(supervised_dataset, [train_size, eval_size])
     ## Data Loader ##
-    scae_loader = DataLoader(
-        combined_scae_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=True,
-        num_workers=NUMBER_OF_WORKERS,
-        pin_memory=True,
-        prefetch_factor=PREFETCH_FACTOR,
-    )
+    # scae_loader = DataLoader(
+    #     combined_scae_dataset,
+    #     batch_size=BATCH_SIZE,
+    #     shuffle=True,
+    #     num_workers=NUMBER_OF_WORKERS,
+    #     pin_memory=True,
+    #     prefetch_factor=PREFETCH_FACTOR,
+    # )
     supervised_train_loader = DataLoader(
         supervised_train_dataset,
         batch_size=BATCH_SIZE,
@@ -108,18 +111,19 @@ if __name__ == '__main__':
     ### ResNet Part ###
     resnet_model = FontResNet()
     celoss = nn.CrossEntropyLoss()
-    resnet_optimizer = resnet_model.get_optimizer(LEARNING_RATE)
+    resnet_optimizer = resnet_model._get_optimizer(LEARNING_RATE)
     if torch.cuda.device_count() > 1:
         resnet_model = nn.DataParallel(resnet_model)
     else:
         resnet_model = resnet_model
-    resnet_trainer = FontClsTrainer(
+    resnet_trainer = SupervisedTrainer(
         resnet_model,
         resnet_optimizer,
         celoss,
         DEVICE,
+        supervised_train_loader,
         supervised_test_loader,
         cls_weights_path,
     )
-    resnet_trainer._train(supervised_train_loader, EPOCHS)
-    resnet_trainer.writer.close()
+    resnet_trainer._train(EPOCHS)
+    resnet_trainer._writer.close()
