@@ -70,6 +70,13 @@ class VFRSynDataset(AdobeVFRAbstractDataset):
         image_filename = os.path.join(self.root_dir, font_family, image_name)
         image = self._load_image(image_filename)
         return image, label
+    
+    def _check(self,idx: int) -> Tuple[Image.Image, int]:
+        label = idx // 1000
+        font_family = self.font_families[idx // 1000]
+        image_name = f"{font_family}_{idx % 1000}.png"
+        image_filename = os.path.join(self.root_dir, font_family, image_name)
+        return image_filename
 
     def _load_image(self, file_name: str) -> None:
         img_path = os.path.join(self.root_dir, file_name)

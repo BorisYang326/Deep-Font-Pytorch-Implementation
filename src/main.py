@@ -5,8 +5,10 @@ from model import FontResNet
 from dataset import VFRRealUDataset, VFRSynDataset
 from trainer import SupervisedTrainer
 from torch.utils.data import ConcatDataset
-from preprocess import TRANSFORMS_SQUEEZE
-
+from preprocess import TRANSFORMS_SQUEEZE,TRANSFORMS_CROP
+from torchsummary import summary
+from torchvision import transforms
+import os
 # VFR_real_u_path = (
 #     '/public/dataset/AdobeVFR/Raw Image/VFR_real_u/scrape-wtf-new'
 # )
@@ -15,17 +17,18 @@ VFR_syn_train_path = '/public/dataset/AdobeVFR/Raw Image/VFR_syn_train'
 # adobeVFR syn_val(from .bcf) part is wrong matched.So we use syn_train to split train/val.
 #############
 # VFR_syn_val_path = '/public/dataset/AdobeVFR/AdobeVFR/Raw Image/VFR_syn_val'
+ROOT_DIR = os.path.dirname(os.getcwd())
 VFR_syn_font_list_path = '/public/dataset/AdobeVFR/fontlist.txt'
-scae_weights_path = './weights/scae_weights.pth'
-cls_weights_path = './weights/'
+scae_weights_path = ROOT_DIR + '/weights/scae_weights.pth'
+cls_weights_path = ROOT_DIR + '/weights/'
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-BATCH_SIZE = 4096 * 2
-EPOCHS = 30
-NUMBER_OF_WORKERS = 16
-LEARNING_RATE = 1e-4
-PREFETCH_FACTOR = 2
+BATCH_SIZE = 512
+EPOCHS = 20
+NUMBER_OF_WORKERS = 32
+LEARNING_RATE = 5e-4
+PREFETCH_FACTOR = 1
 
 
 if __name__ == '__main__':
@@ -42,7 +45,7 @@ if __name__ == '__main__':
     supervised_dataset = VFRSynDataset(
         root_dir=VFR_syn_train_path,
         font_list_path = VFR_syn_font_list_path,
-        transform=TRANSFORMS_SQUEEZE,
+        transform=TRANSFORMS_CROP,
     )
     train_size = int(0.9 * len(supervised_dataset))
     eval_size = len(supervised_dataset) - train_size
@@ -61,7 +64,7 @@ if __name__ == '__main__':
         batch_size=BATCH_SIZE,
         shuffle=True,
         num_workers=NUMBER_OF_WORKERS,
-        pin_memory=False,
+        pin_memory=True,
         prefetch_factor=PREFETCH_FACTOR,
     )
     supervised_test_loader = DataLoader(
@@ -69,7 +72,7 @@ if __name__ == '__main__':
         batch_size=BATCH_SIZE,
         shuffle=True,
         num_workers=NUMBER_OF_WORKERS,
-        pin_memory=False,
+        pin_memory=True,
         prefetch_factor=PREFETCH_FACTOR,
     )
     ## Check Dataloader ##
@@ -110,6 +113,12 @@ if __name__ == '__main__':
     # cnn_trainer.writer.close()
     ### ResNet Part ###
     resnet_model = FontResNet()
+    ### TEST CODE ###
+    train_sample = next(iter(supervised_train_loader))
+    train_sample_pil = transforms.ToPILImage()(train_sample[0][0])
+    train_sample_font = supervised_dataset._label2font(train_sample[1][0])
+    train_sample_pil.save(ROOT_DIR + f'/result/train_sample_{train_sample_font}.png')
+    ### TEST CODE ###
     celoss = nn.CrossEntropyLoss()
     resnet_optimizer = resnet_model._get_optimizer(LEARNING_RATE)
     if torch.cuda.device_count() > 1:

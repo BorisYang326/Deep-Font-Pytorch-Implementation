@@ -179,6 +179,9 @@ class SupervisedTrainer(Trainer):
         return avg_loss
 
     def _save_weights(self, epoch: int):
-        path = self._save_path + f'{self._model.name}_weights_{epoch}.pth'
+        model_name = self._model.modules.name if hasattr(
+            self._model, 'modules'
+        ) else self._model.name
+        path = self._save_path + f'{model_name}_weights_{epoch}.pth'
         torch.save(self._model.state_dict(), path)
         print("Saved model weights at {}".format(path))

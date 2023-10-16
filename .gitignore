@@ -1,8 +1,9 @@
 *.pth
 *.png
 *.jpg
-/src/runs/
+runs/
+/result/
+__pycache__/
 /.vscode
 /weights
-__pycache__/
-*.pyc
+*.py[cod]
