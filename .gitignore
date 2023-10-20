@@ -7,4 +7,4 @@ runs/
 __pycache__/
 /.vscode
 /weights
-
+/outputs

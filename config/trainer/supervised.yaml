@@ -1,0 +1,7 @@
+_target_: src.trainers.SupervisedTrainer
+_partial_: true
+model: ???
+optimizer: ???
+device: ${training.device}
+log_dir: ./runs
+save_path: ./saved_models

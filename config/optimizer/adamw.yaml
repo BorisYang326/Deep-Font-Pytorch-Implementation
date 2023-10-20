@@ -1,0 +1,5 @@
+_target_: torch.optim.AdamW
+_partial_: true
+lr: ${training.lr}
+weight_decay: ${training.weight_decay}
+betas: [0.9, 0.98]

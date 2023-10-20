@@ -7,7 +7,7 @@ from torch.optim import Optimizer
 import torch.nn as nn
 from typing import Optional
 from torch.utils.data import DataLoader
-
+import os
 LOG_STEP = 100
 
 
@@ -21,6 +21,7 @@ class Trainer:
         train_loader: DataLoader,
         eval_loader: Optional[DataLoader] = None,
         save_path: Optional[str] = None,
+        log_dir: Optional[str] = None,
     ):
         self._model = model.to(device)
         self._optimizer = optimizer
@@ -30,6 +31,7 @@ class Trainer:
         self._eval_loader = eval_loader
         self._save_path = save_path
         self._log_step = LOG_STEP
+        self._writer = SummaryWriter(log_dir=log_dir)
 
     def _train(self, epochs: int):
         raise NotImplementedError
@@ -38,6 +40,7 @@ class Trainer:
         raise NotImplementedError
 
     def _save_weights(self):
+        os.makedirs(self._save_path, exist_ok=True)
         torch.save(self._model.state_dict(), self._save_path)
         print("Saved model weights at {}".format(self._save_path))
 
@@ -67,8 +70,19 @@ class SCAETrainer(Trainer):
         device: torch.device,
         train_loader: DataLoader,
         save_path: str,
+        eval_loader: Optional[DataLoader] = None,
+        log_dir: Optional[str] = None,
     ):
-        super().__init__(model, optimizer, criterion, device, train_loader, save_path)
+        super().__init__(
+            model,
+            optimizer,
+            criterion,
+            device,
+            train_loader,
+            eval_loader,
+            save_path,
+            log_dir,
+        )
 
     def _train(self, epochs: int):
         for epoch in range(epochs):
@@ -109,9 +123,9 @@ class SupervisedTrainer(Trainer):
             device,
             train_loader,
             eval_loader,
-            save_path=save_path,
+            save_path,
+            log_dir
         )
-        self._writer = SummaryWriter(log_dir=log_dir)
         self._model_name = model.name
         if torch.cuda.device_count() > 1:
             self._model = nn.DataParallel(model)
@@ -122,7 +136,7 @@ class SupervisedTrainer(Trainer):
         best_acc = 0.0
         for epoch in range(epochs):
             self._train_epoch(epoch)
-            test_loss,test_acc = self._evaluate(epoch)
+            test_loss, test_acc = self._evaluate(epoch)
             self._writer.add_scalar('Test Accuracy', test_acc, epoch)
             self._writer.add_scalar('Test Loss', test_loss, epoch)
             print(f"Test accuracy: {test_acc:.4f} at epoch {epoch+1}.")
@@ -187,9 +201,10 @@ class SupervisedTrainer(Trainer):
 
         avg_loss = total_loss / len(self._eval_loader)
         avg_accuracy = np.mean(total_accuracy)
-        return avg_loss,avg_accuracy
+        return avg_loss, avg_accuracy
 
     def _save_weights(self, epoch: int):
-        path = self._save_path + f'{self._model_name}_full_weights_{epoch}.pth'
+        os.makedirs(self._save_path, exist_ok=True)
+        path = os.path.join(self._save_path,f'{self._model_name}_weights_{epoch}.pth')
         torch.save(self._model.state_dict(), path)
         print("Saved model weights at {}".format(path))

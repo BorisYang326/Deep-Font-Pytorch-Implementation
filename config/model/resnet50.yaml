@@ -1,0 +1,3 @@
+_target_: src.model.FontResNet
+_partial_: true
+backbone: resnet50

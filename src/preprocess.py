@@ -1,18 +1,14 @@
 from torchvision import transforms
 import torch
 import torchvision.transforms.functional as F
-from model import INPUT_SIZE
+from .model import INPUT_SIZE
 import random
 import torch.nn as nn
 from typing import Optional
 from torch import Tensor
 from typing import List, Any
 from PIL import Image
-import h5py
-import os
-import io
-import numpy as np
-from tqdm import tqdm
+
 
 SQUEEZE_RATIO = 2.5
 
@@ -286,44 +282,4 @@ TRANSFORMS_SQUEEZE = transforms.Compose(
 # img_crop.save('./test_images/syn/2123129_crop.png')
 
 
-def images_to_hdf5(root_dir, hdf5_file_path):
-    total_images = sum(
-        [
-            len(os.listdir(os.path.join(root_dir, d)))
-            for d in os.listdir(root_dir)
-            if os.path.isdir(os.path.join(root_dir, d))
-        ]
-    )
 
-    with h5py.File(hdf5_file_path, 'w') as hf:
-        img_dtype = h5py.vlen_dtype(
-            np.dtype('uint8')
-        )  # Variable length byte arrays for images
-        img_dset = hf.create_dataset("images", shape=(total_images,), dtype=img_dtype)
-        label_dset = hf.create_dataset(
-            "labels", shape=(total_images,), dtype=h5py.string_dtype(encoding='utf-8')
-        )
-
-        idx = 0  # Index of the current image
-        font_dirs = [
-            d for d in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, d))
-        ]
-        for font_dir in tqdm(font_dirs):
-            font_path = os.path.join(root_dir, font_dir)
-            images = [img for img in os.listdir(font_path) if img.endswith('.png')]
-            for img_name in images:
-                img_path = os.path.join(font_path, img_name)
-
-                with Image.open(img_path) as img:
-                    with io.BytesIO() as buffer:
-                        img.save(buffer, format="PNG")
-                        img_byte_array = buffer.getvalue()
-
-                img_dset[idx] = np.frombuffer(img_byte_array, dtype='uint8')
-                label_dset[idx] = font_dir 
-                idx += 1
-
-
-# root_dir = '/public/dataset/AdobeVFR/Raw Image/VFR_syn_train'
-# hdf5_file_path = '/public/dataset/AdobeVFR/hdf5/VFR_syn_train_bk.hdf5'
-# images_to_hdf5(root_dir, hdf5_file_path)

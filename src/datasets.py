@@ -7,6 +7,7 @@ import torchvision.transforms as transforms
 from typing import Tuple, Optional
 import h5py
 import io
+
 VFR_FONTS_NUM = 2383
 SYN_DATA_COUNT_PER_FONT = 1000
 
@@ -62,6 +63,61 @@ class VFRRealUDataset(AdobeVFRAbstractDataset):
             return None
 
 
+class VFRAlignHDF5Dataset(Dataset):
+    def __init__(
+        self,
+        hdf5_file_path: str,
+        transform: Optional[transforms.Compose] = None,
+    ):
+        super().__init__()
+        # load hdf5 file in __init__ will lead error when num_workers > 1
+        # self.hf = h5py.File(hdf5_file_path, 'r')
+        # self._images = self.hf['images']
+        # self._labels = self.hf['labels']
+        self._hdf5_file_path = hdf5_file_path
+        self.transform = transform
+        with h5py.File(self._hdf5_file_path, 'r') as f:
+            self._length = len(f['images'])
+    
+    def _set_transform(self, transform: transforms.Compose):
+        self.transform = transform
+    
+    def _open_hdf5(self):
+        self.hf = h5py.File(self._hdf5_file_path, 'r')
+        try:
+            self._images = self.hf['images']
+        except Exception:
+            raise Exception(f"Error loading images from {self._hdf5_file_path}")
+        try:
+            self._labels = self.hf['labels']
+        except Exception:
+            raise Exception(f"Error loading labels from {self._hdf5_file_path}")
+        assert len(self._images) == len(
+            self._labels
+        ), 'images and labels have different length.'
+        if self._num_classes is not None:
+            pass
+        else:
+            # check for full dataset.
+            assert (
+                len(self._labels) == self._length
+            ), 'hd5f file did not contain all the data of VFR_syn dataset.'
+
+    def __len__(self) -> int:
+        return self._length
+
+    def __getitem__(self, idx: int) -> Tuple[Image.Image, int]:
+        if not hasattr(self, 'hf'):
+            self._open_hdf5()
+        assert hasattr(self, '_images'), 'images not found in hdf5 file.'
+        image_byte_array = self._images[idx]
+        image = Image.open(io.BytesIO(image_byte_array))
+
+        if self.transform:
+            image = self.transform(image)
+        return image
+
+
 class VFRSynDataset(AdobeVFRAbstractDataset):
     def __init__(
         self,
@@ -72,6 +128,9 @@ class VFRSynDataset(AdobeVFRAbstractDataset):
         super().__init__(root_dir, transform)
         with open(font_list_path, 'r') as f:
             self.font_families = f.read().splitlines()
+            
+    def _set_transform(self, transform: transforms.Compose):
+        self.transform = transform
 
     def __len__(self) -> int:
         # 1000 images per font family
@@ -94,7 +153,9 @@ class VFRSynDataset(AdobeVFRAbstractDataset):
             cache_path = os.path.join(cache_root, font)
             if not os.path.exists(cache_path):
                 os.makedirs(cache_path)
-            image_path = os.path.join(cache_path, f"{font}_{idx % SYN_DATA_COUNT_PER_FONT}_trans.png")
+            image_path = os.path.join(
+                cache_path, f"{font}_{idx % SYN_DATA_COUNT_PER_FONT}_trans.png"
+            )
             image_pil = transforms.ToPILImage()(image)
             image_pil.save(image_path)
         else:
@@ -119,8 +180,9 @@ class VFRSynHDF5Dataset(Dataset):
         self,
         hdf5_file_path: str,
         font_list_path: str,
+        num_classes: int,
         transform: Optional[transforms.Compose] = None,
-        num_classes: Optional[int] = None,
+        
     ):
         super().__init__()
         # load hdf5 file in __init__ will lead error when num_workers > 1
@@ -130,15 +192,11 @@ class VFRSynHDF5Dataset(Dataset):
         self._hdf5_file_path = hdf5_file_path
         self.transform = transform
         with open(font_list_path, 'r') as f:
-            self._font_families = f.read().splitlines()        
+            self._font_families = f.read().splitlines()
         # with h5py.File(self._hdf5_file_path, 'r') as f:
         #     self._length = len(f['labels'])
-        self._length = VFR_FONTS_NUM * SYN_DATA_COUNT_PER_FONT
         self._num_classes = num_classes
-        if self._num_classes is not None:
-            self._length = num_classes * SYN_DATA_COUNT_PER_FONT
-        
-        
+        self._length = num_classes * SYN_DATA_COUNT_PER_FONT
 
     def _open_hdf5(self):
         self.hf = h5py.File(self._hdf5_file_path, 'r')
@@ -150,12 +208,16 @@ class VFRSynHDF5Dataset(Dataset):
             self._labels = self.hf['labels']
         except Exception:
             raise Exception(f"Error loading labels from {self._hdf5_file_path}")
-        assert len(self._images) == len(self._labels), 'images and labels have different length.'
+        assert len(self._images) == len(
+            self._labels
+        ), 'images and labels have different length.'
         if self._num_classes is not None:
             pass
         else:
             # check for full dataset.
-            assert len(self._labels) == self._length, 'hd5f file did not contain all the data of VFR_syn dataset.'
+            assert (
+                len(self._labels) == self._length
+            ), 'hd5f file did not contain all the data of VFR_syn dataset.'
 
     def __len__(self) -> int:
         return self._length
@@ -166,7 +228,7 @@ class VFRSynHDF5Dataset(Dataset):
         assert hasattr(self, '_images') and hasattr(
             self, '_labels'
         ), 'images or labels not found in hdf5 file.'
-        if self._num_classes is not None:
+        if self._num_classes != VFR_FONTS_NUM:
             # self._images and self._labels will change after calling _load_partial_data().
             self._load_partial_data()
             # now idx is the index of the image in the partial dataset
@@ -193,10 +255,10 @@ class VFRSynHDF5Dataset(Dataset):
     def _load_partial_data(self):
         """
         Load a subset of the data for quick testing.
-        
+
         Parameters:
         - num_classes: Number of classes to load. Default is 20.
-        
+
         Returns:
         - partial_images: A list of loaded images.
         - partial_labels: A list of corresponding labels.

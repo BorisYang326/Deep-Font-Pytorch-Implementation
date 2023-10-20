@@ -1,0 +1,3 @@
+_target_: src.datasets.VFRRealDataset
+_partial_: true
+root_dir: /public/dataset/AdobeVFR/hdf5/VFR_syn_real_align_bk.hdf5

@@ -1,0 +1,8 @@
+# conf/config.yaml
+defaults:
+  - training: default
+  - dataset: vfr_syn_hdf5
+  - model: resnet50
+  - trainer: supervised
+  - optimizer: adamw
+  
