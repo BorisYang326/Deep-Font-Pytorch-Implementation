@@ -161,9 +161,9 @@ class FontResNet(nn.Module):
         super(FontResNet, self).__init__()
         
         # Load the ResNet-50 model for grey-scale
-        # self.resnet_ = ResNet(Bottleneck, [3, 4, 6, 3])
+        self.resnet_ = ResNet(Bottleneck, [3, 4, 6, 3],num_classes=num_classes)
         # Load the ResNet-18 model for grey-scale
-        self.resnet_ = ResNet(BasicBlock, [2, 2, 2, 2])
+        # self.resnet_ = ResNet(BasicBlock, [2, 2, 2, 2],num_classes=num_classes)
         
         # Remove the last fully connected layer to get the embeddings
         modules = list(self.resnet_.children())[:-1]
@@ -176,11 +176,12 @@ class FontResNet(nn.Module):
         self.fc = nn.Linear(self.resnet_.fc.in_features, num_classes)
         
     def forward(self, X:Tensor)->Tensor:
-        X = self.resnet(X)
-        X = torch.flatten(X, 1)
-        # X = self.embedding(X)
-        X = self.fc(X)
-        return F.softmax(X, dim=1)
+        # X = self.resnet(X)
+        # X = torch.flatten(X, 1)
+        # # X = self.embedding(X)
+        # X = self.fc(X)
+        X = self.resnet_(X)
+        return X
     
     def _get_optimizer(self, lr: float)->Optimizer:
         return AdamW(self.parameters(), lr=lr)

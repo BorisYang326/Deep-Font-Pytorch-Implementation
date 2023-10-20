@@ -1,35 +1,43 @@
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader,random_split
+from torch.utils.data import DataLoader, random_split
 from model import FontResNet
-from dataset import VFRRealUDataset, VFRSynDataset
+from dataset import VFRSynHDF5Dataset
 from trainer import SupervisedTrainer
-from torch.utils.data import ConcatDataset
-from preprocess import TRANSFORMS_SQUEEZE,TRANSFORMS_CROP
-from torchsummary import summary
-from torchvision import transforms
+from preprocess import TRANSFORMS_SQUEEZE
 import os
+from torchvision import transforms
+
 # VFR_real_u_path = (
 #     '/public/dataset/AdobeVFR/Raw Image/VFR_real_u/scrape-wtf-new'
 # )
 VFR_syn_train_path = '/public/dataset/AdobeVFR/Raw Image/VFR_syn_train'
+VFR_syn_train_hdf5_path = '/public/dataset/AdobeVFR/hdf5/VFR_syn_train.hdf5'
 #############
 # adobeVFR syn_val(from .bcf) part is wrong matched.So we use syn_train to split train/val.
 #############
 # VFR_syn_val_path = '/public/dataset/AdobeVFR/AdobeVFR/Raw Image/VFR_syn_val'
-ROOT_DIR = os.path.dirname(os.getcwd())
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VFR_syn_font_list_path = '/public/dataset/AdobeVFR/fontlist.txt'
+# VFR_syn_font_list_path = ROOT_DIR + '/test_images/fontlist_20.txt'
 scae_weights_path = ROOT_DIR + '/weights/scae_weights.pth'
 cls_weights_path = ROOT_DIR + '/weights/'
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-BATCH_SIZE = 512
-EPOCHS = 20
-NUMBER_OF_WORKERS = 32
-LEARNING_RATE = 5e-4
-PREFETCH_FACTOR = 1
-
+BATCH_SIZE = 4096
+EPOCHS = 100
+### multi thread mode ##
+NUMBER_OF_WORKERS = 4
+PREFETCH_FACTOR = 2
+### ---------------- ###
+### single thread mode ##
+# hdf5 do not support multi-thread
+# NUMBER_OF_WORKERS = 0
+# PREFETCH_FACTOR = None
+### ---------------- ###
+LEARNING_RATE = 1e-4
+# PARTIAL_NUM_CLASSES = 20
 
 if __name__ == '__main__':
     ## Dataset ##
@@ -42,14 +50,23 @@ if __name__ == '__main__':
     # )
 
     # combined_scae_dataset = ConcatDataset([scae_real_dataset, scae_syn_dataset])
-    supervised_dataset = VFRSynDataset(
-        root_dir=VFR_syn_train_path,
-        font_list_path = VFR_syn_font_list_path,
-        transform=TRANSFORMS_CROP,
+    # supervised_dataset = VFRSynDataset(
+    #     root_dir=VFR_syn_train_path,
+    #     font_list_path = VFR_syn_font_list_path,
+    #     transform=TRANSFORMS_SQUEEZE,
+    # )
+    supervised_dataset = VFRSynHDF5Dataset(
+        VFR_syn_train_hdf5_path,
+        VFR_syn_font_list_path,
+        transform=TRANSFORMS_SQUEEZE,
+        # num_classes=PARTIAL_NUM_CLASSES,
     )
+    # supervised_dataset = VFRSynHDF5Dataset(VFR_syn_train_hdf5_path,VFR_syn_font_list_path,transform=TRANSFORMS_SQUEEZE)
     train_size = int(0.9 * len(supervised_dataset))
     eval_size = len(supervised_dataset) - train_size
-    supervised_train_dataset,supervised_eval_dataset = random_split(supervised_dataset, [train_size, eval_size])
+    supervised_train_dataset, supervised_eval_dataset = random_split(
+        supervised_dataset, [train_size, eval_size], torch.Generator().manual_seed(42)
+    )
     ## Data Loader ##
     # scae_loader = DataLoader(
     #     combined_scae_dataset,
@@ -113,18 +130,21 @@ if __name__ == '__main__':
     # cnn_trainer.writer.close()
     ### ResNet Part ###
     resnet_model = FontResNet()
+    # resnet_model = FontResNet(PARTIAL_NUM_CLASSES)
     ### TEST CODE ###
-    train_sample = next(iter(supervised_train_loader))
-    train_sample_pil = transforms.ToPILImage()(train_sample[0][0])
-    train_sample_font = supervised_dataset._label2font(train_sample[1][0])
-    train_sample_pil.save(ROOT_DIR + f'/result/train_sample_{train_sample_font}.png')
+    # train_sample_data = next(iter(supervised_train_loader))
+    # for index in range(len(train_sample_data[0])):
+    #     train_sample_pil = transforms.ToPILImage()(train_sample_data[0][index])
+    #     train_sample_font = supervised_dataset._label2font(train_sample_data[1][index])
+    #     train_sample_pil.save(ROOT_DIR + f'/test_images/syn/train/{train_sample_font}_{index}.png')
+    # test_sample_data = next(iter(supervised_test_loader))
+    # for index in range(len(test_sample_data[0])):
+    #     test_sample_pil = transforms.ToPILImage()(test_sample_data[0][index])
+    #     test_sample_font = supervised_dataset._label2font(test_sample_data[1][index])
+    #     test_sample_pil.save(ROOT_DIR + f'/test_images/syn/test/{test_sample_font}_{index}.png')
     ### TEST CODE ###
     celoss = nn.CrossEntropyLoss()
     resnet_optimizer = resnet_model._get_optimizer(LEARNING_RATE)
-    if torch.cuda.device_count() > 1:
-        resnet_model = nn.DataParallel(resnet_model)
-    else:
-        resnet_model = resnet_model
     resnet_trainer = SupervisedTrainer(
         resnet_model,
         resnet_optimizer,

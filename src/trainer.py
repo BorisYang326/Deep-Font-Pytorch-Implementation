@@ -112,19 +112,26 @@ class SupervisedTrainer(Trainer):
             save_path=save_path,
         )
         self._writer = SummaryWriter(log_dir=log_dir)
+        self._model_name = model.name
+        if torch.cuda.device_count() > 1:
+            self._model = nn.DataParallel(model)
+        else:
+            self._model = model
 
     def _train(self, epochs: int):
-        best_acc = torch.inf
+        best_acc = 0.0
         for epoch in range(epochs):
             self._train_epoch(epoch)
-            test_acc = self._evaluate(epoch)
+            test_loss,test_acc = self._evaluate(epoch)
             self._writer.add_scalar('Test Accuracy', test_acc, epoch)
+            self._writer.add_scalar('Test Loss', test_loss, epoch)
             print(f"Test accuracy: {test_acc:.4f} at epoch {epoch+1}.")
-            if test_acc < best_acc:
+            print(f"Test loss: {test_loss:.4f} at epoch {epoch+1}.")
+            if test_acc > best_acc:
                 self._save_weights(epoch)
                 best_acc = test_acc
             # if epoch % 10 == 0:
-            # self._save_weights(epoch)
+            #     self._save_weights(epoch)
 
     def _train_epoch(self, epoch: int):
         self._model.train()
@@ -157,6 +164,7 @@ class SupervisedTrainer(Trainer):
     def _evaluate(self, epoch: int) -> float:
         self._model.eval()
         total_loss = 0
+        total_accuracy = []
         with torch.no_grad():
             pbar = tqdm(
                 enumerate(
@@ -170,18 +178,18 @@ class SupervisedTrainer(Trainer):
                 images, labels = images.to(self._device), labels.to(self._device)
                 outputs = self._model(images)
                 loss = self._criterion(outputs, labels)
+                accuracy = (outputs.argmax(dim=1) == labels).float().mean()
                 total_loss += loss.item()
+                total_accuracy.append(accuracy.item())
 
                 # Log the evaluation loss to TensorBoard
                 # self.writer.add_scalar('Evaluation Loss', loss.item(), epoch * len(eval_loader) + idx)
 
         avg_loss = total_loss / len(self._eval_loader)
-        return avg_loss
+        avg_accuracy = np.mean(total_accuracy)
+        return avg_loss,avg_accuracy
 
     def _save_weights(self, epoch: int):
-        model_name = self._model.modules.name if hasattr(
-            self._model, 'modules'
-        ) else self._model.name
-        path = self._save_path + f'{model_name}_weights_{epoch}.pth'
+        path = self._save_path + f'{self._model_name}_full_weights_{epoch}.pth'
         torch.save(self._model.state_dict(), path)
         print("Saved model weights at {}".format(path))
