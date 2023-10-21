@@ -175,6 +175,7 @@ class FontResNet(nn.Module):
         num_classes: int = VFR_FONTS_NUM,
         backbone: str = 'resnet50',
         finetune_ratio: Optional[float] = 0.0,
+        pretrained_weight_path: Optional[str] = None,
     ):
         super(FontResNet, self).__init__()
         self._num_classes = num_classes
@@ -200,6 +201,9 @@ class FontResNet(nn.Module):
 
         # Classification layer
         self.fc = nn.Linear(resnet_model.fc.in_features, self._num_classes)
+        
+        if pretrained_weight_path is not None:
+            self._load_weights(pretrained_weight_path)
 
     def forward(self, X: Tensor) -> Tensor:
         X = self.conv1(X)
@@ -227,6 +231,7 @@ class FontResNet(nn.Module):
             # If it was parallelized, we need to remove the 'module.' prefix from keys
             state_dict = {k[7:]: v for k, v in state_dict.items()}
         self.load_state_dict(state_dict)
+        logger.info(f"<{self.name}> Loaded weights from {path}")
 
     def _optim_groups(self, lr: float) -> list:
         layers = {

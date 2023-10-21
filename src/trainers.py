@@ -144,11 +144,11 @@ class SupervisedTrainer(Trainer):
             test_loss, test_acc, class_acc_dic = self._evaluate(epoch)
             self._writer.add_scalar('Test Accuracy', test_acc, epoch)
             self._writer.add_scalar('Test Loss', test_loss, epoch)
-            self._writer.add_histogram(
-                'Class_Accuracy_Distribution',
-                torch.tensor(list(class_acc_dic.values())).view(2383, 1),
-                epoch,
-            )
+            # self._writer.add_histogram(
+            #     'Class_Accuracy_Distribution',
+            #     torch.tensor(list(class_acc_dic.values())).view(2383, 1),
+            #     epoch,
+            # )
             print(f"Test accuracy: {test_acc:.4f} at epoch {epoch+1}.")
             print(f"Test loss: {test_loss:.4f} at epoch {epoch+1}.")
             if test_acc > best_acc:

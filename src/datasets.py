@@ -8,7 +8,8 @@ from typing import Tuple, Optional
 import h5py
 import io
 from .config import SYN_DATA_COUNT_PER_FONT, VFR_FONTS_NUM
-
+import logging
+logger = logging.getLogger(__name__)
 # with h5py.File(hdf5_file_path, 'w') as f:
 #     for idx in range(len(your_dataset)):
 #         image, label = your_dataset[idx]
@@ -191,10 +192,11 @@ class VFRSynHDF5Dataset(Dataset):
         self.transform = transform
         with open(font_list_path, 'r') as f:
             self._font_families = f.read().splitlines()
-        # with h5py.File(self._hdf5_file_path, 'r') as f:
-        #     self._length = len(f['labels'])
+        with h5py.File(self._hdf5_file_path, 'r') as f:
+            self._length = len(f['labels'])
         self._num_classes = num_classes
-        self._length = num_classes * SYN_DATA_COUNT_PER_FONT
+        # only correct for vfr_syn dataset.
+        # self._length = num_classes * SYN_DATA_COUNT_PER_FONT
 
     def _open_hdf5(self):
         self.hf = h5py.File(self._hdf5_file_path, 'r')
@@ -238,7 +240,7 @@ class VFRSynHDF5Dataset(Dataset):
             image = self.transform(image)
         # convert font-family name from byte to str
         font = self._labels[idx].decode("utf-8")
-        # print(font)
+        # logger.info(f"font: {font}")
 
         label = self._font2label(font)
 

@@ -1,4 +1,12 @@
 # @package _global_
 defaults:
   - override /model: resnet50
-  - override /model/finetune_ratio: 1e-3
+  - override /dataset: vfr_real_supervised_hdf5.yaml
+
+
+model:
+  finetune_ratio: 1e-3
+  pretrained_weight_path: ${hydra:runtime.cwd}/weights/Resnet-50/ResNet_weights_19.pth
+
+training:
+  epochs: 100

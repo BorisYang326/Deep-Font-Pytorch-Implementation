@@ -1,4 +1,10 @@
 # @package _global_
 defaults:
   - override /model: cnn
-  - override /model/finetune_ratio: 1e-3
+
+model:
+  finetune_ratio: 1e-3
+
+training:
+  epochs: 100
+  batch_size: 8192

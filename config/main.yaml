@@ -5,4 +5,5 @@ defaults:
   - model: resnet50
   - trainer: supervised
   - optimizer: adamw
+  - _self_
   
