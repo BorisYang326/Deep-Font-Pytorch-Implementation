@@ -1,0 +1,4 @@
+# @package _global_
+defaults:
+  - override /model: resnet50
+  - override /model/finetune_ratio: 1e-3

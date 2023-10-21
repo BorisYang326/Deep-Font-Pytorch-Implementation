@@ -106,3 +106,7 @@ def align_images_to_hdf5(dir_list, hdf5_file_path):
 # ]
 # hdf5_file_path = '/public/dataset/AdobeVFR/hdf5/VFR_syn_real_align_bk.hdf5'
 # align_images_to_hdf5(dir_list, hdf5_file_path)
+
+# root_dir = '/public/dataset/AdobeVFR/Raw Image/VFR_real_test_fromzip'
+# hdf5_file_path = '/public/dataset/AdobeVFR/hdf5/VFR_real_test_bk.hdf5'
+# syn_images_to_hdf5(root_dir, hdf5_file_path)

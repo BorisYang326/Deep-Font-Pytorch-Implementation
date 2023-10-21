@@ -7,7 +7,8 @@ from omegaconf import DictConfig
 from hydra.core.config_store import ConfigStore
 from src.config import TrainConfig
 from hydra.utils import instantiate
-
+import logging
+logger = logging.getLogger(__name__)
 
 cs = ConfigStore.instance()
 cs.store(group="training", name="base_training_default", node=TrainConfig)
@@ -51,9 +52,11 @@ def main(cfg: DictConfig) -> None:
         )
     ## Model ##
     model = instantiate(cfg.model)(cfg.training.num_classes)
-    optimizer = instantiate(cfg.optimizer)(params=model.parameters())
+    optim_groups = model._optim_groups(cfg.training.lr)
+    optimizer = instantiate(cfg.optimizer)(params=optim_groups)
     ## Trainer ##
     criterion = nn.MSELoss() if cfg.model == 'scae' else nn.CrossEntropyLoss()
+    logger.info(f"Criterion: {criterion}")
     trainer = instantiate(cfg.trainer)(
         model=model,
         optimizer=optimizer,

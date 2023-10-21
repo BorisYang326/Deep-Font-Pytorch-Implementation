@@ -1,18 +1,20 @@
 import torch
 from torchvision import transforms
 import matplotlib.pyplot as plt
-from preprocess import TRANSFORMS_SQUEEZE,TRANSFORMS_CROP
+from src.preprocess import TRANSFORMS_SQUEEZE,TRANSFORMS_CROP
 from PIL import Image
-from model import SCAE,CNN,FontResNet
+from src.model import SCAE,CNN,FontResNet
 import os
-from main import ROOT_DIR,PARTIAL_NUM_CLASSES
+import torch.nn.functional as F
 
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 scae_weights_path = os.path.join(ROOT_DIR,'./weights/scae_weights.pth')
 cnn_weights_path = os.path.join(ROOT_DIR,'./weights/cnn_weights_bk.pth')
-resent_weights_path = os.path.join(ROOT_DIR,'./weights/ResNet_full_weights_19.pth')
+resent_weights_path = os.path.join(ROOT_DIR,'./weights/Resnet-50/ResNet_full_weights_13.pth')
 test_folder = os.path.join(ROOT_DIR,'./test_images/syn/train/')
 result_folder = os.path.join(ROOT_DIR,'./result/')
-font_book_path = os.path.join(ROOT_DIR,'./test_images/fontlist_20.txt')
+# font_book_path = os.path.join(ROOT_DIR,'./test_images/fontlist_20.txt')
+font_book_path = '/public/dataset/AdobeVFR/fontlist.txt'
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -33,7 +35,7 @@ if __name__ == '__main__':
     # model = CNN(SCAE_model.encoder).to(DEVICE)
     # assert os.path.exists(cnn_weights_path),'No weights file for CNN_model!'
     # model.load_weights(cnn_weights_path)
-    model = FontResNet(PARTIAL_NUM_CLASSES).to(DEVICE)
+    model = FontResNet(2383,'resnet50').to(DEVICE)
     assert os.path.exists(resent_weights_path),'No weights file for FontResNet_model!'
     model._load_weights(resent_weights_path)
     image_list = [os.path.join(test_folder, f) for f in os.listdir(test_folder) if os.path.isfile(os.path.join(test_folder, f)) and (f.endswith('.jpg') or f.endswith('.png'))]
@@ -52,8 +54,8 @@ if __name__ == '__main__':
             # image_crop_pil = transforms.ToPILImage()(image_crop)
             # image_pil.save(os.path.join(result_folder, image_path.split('/')[-1]))
             # image_crop_pil.save(os.path.join(result_folder, image_path.split('/')[-1].split('.')[0]+'_crop.jpg'))
-            output = model(image)
-            topk_values, topk_indices = torch.topk(output, k=3)
+            output = F.softmax(model(image),dim=1)
+            topk_values, topk_indices = torch.topk(output,dim=1, k=3)
             topk_indices_list = topk_indices.squeeze().tolist()
             topk_values_list = topk_values.squeeze().cpu().numpy()
             font_name_list = [font_books[i] for i in topk_indices_list]

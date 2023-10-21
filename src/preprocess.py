@@ -1,16 +1,15 @@
 from torchvision import transforms
 import torch
 import torchvision.transforms.functional as F
-from .model import INPUT_SIZE
 import random
 import torch.nn as nn
 from typing import Optional
 from torch import Tensor
 from typing import List, Any
 from PIL import Image
+from .config import SQUEEZE_RATIO,INPUT_SIZE
 
 
-SQUEEZE_RATIO = 2.5
 
 
 class GaussianNoise(torch.nn.Module):

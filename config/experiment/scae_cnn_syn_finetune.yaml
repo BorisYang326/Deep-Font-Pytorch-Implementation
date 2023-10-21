@@ -1,0 +1,4 @@
+# @package _global_
+defaults:
+  - override /model: cnn
+  - override /model/finetune_ratio: 1e-3

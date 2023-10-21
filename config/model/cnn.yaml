@@ -2,4 +2,4 @@ _target_: src.model.CNN
 _partial_: true
 # encoder_weight_path: ${hydra:launcher.cwd}/weights/SCAE/scae_weights.pth
 encoder_weight_path: ${hydra:runtime.cwd}/weights/SCAE/scae_weights.pth
-finetune_ratio_Cu : 0.0
+finetune_ratio : 0.0

@@ -7,9 +7,7 @@ import torchvision.transforms as transforms
 from typing import Tuple, Optional
 import h5py
 import io
-
-VFR_FONTS_NUM = 2383
-SYN_DATA_COUNT_PER_FONT = 1000
+from .config import SYN_DATA_COUNT_PER_FONT, VFR_FONTS_NUM
 
 # with h5py.File(hdf5_file_path, 'w') as f:
 #     for idx in range(len(your_dataset)):

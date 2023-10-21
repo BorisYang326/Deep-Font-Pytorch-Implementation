@@ -5,3 +5,4 @@ optimizer: ???
 device: ${training.device}
 log_dir: ./runs
 save_path: ./saved_models
+log_step: ${training.gradient_log_iter}

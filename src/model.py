@@ -5,8 +5,10 @@ from typing import Optional
 from torch import Tensor
 from torch.optim import Optimizer, AdamW
 from .backbone.resnet import ResNet, Bottleneck, BasicBlock
-from .datasets import VFR_FONTS_NUM
-INPUT_SIZE = 105
+from .config import VFR_FONTS_NUM
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Encoder(nn.Module):
@@ -71,14 +73,14 @@ class CNN(nn.Module):
         self,
         num_classes: int = VFR_FONTS_NUM,
         encoder_weight_path: Optional[str] = None,
-        finetune_ratio_Cu: Optional[float] = 0.0,
+        finetune_ratio: Optional[float] = 0.0,
     ):
         super().__init__()
         # self.cls_flg = True if num_types is not None else False
-        self._num_types = num_classes
+        self._num_classes = num_classes
         self._scae = SCAE()
         self._use_SCAE = True if encoder_weight_path is not None else False
-        self._finetune_ratio_Cu = finetune_ratio_Cu
+        self._finetune_ratio = finetune_ratio
         if self._use_SCAE:
             self._scae._load_weights(encoder_weight_path)
             print("Using SCAE weights")
@@ -125,12 +127,12 @@ class CNN(nn.Module):
             nn.Linear(4096, VFR_FONTS_NUM),
             nn.ReLU(),
         )
-        self.cls_head = nn.Linear(VFR_FONTS_NUM, self._num_types)
+        self.cls_head = nn.Linear(VFR_FONTS_NUM, self._num_classes)
 
     def forward(self, X: Tensor) -> Tensor:
         X = self.Cu(X)
         X = self.Cs(X)
-        if self._num_types != VFR_FONTS_NUM:
+        if self._num_classes != VFR_FONTS_NUM:
             X = self.cls_head(X)
         return X
 
@@ -144,49 +146,73 @@ class CNN(nn.Module):
             state_dict = {k[7:]: v for k, v in state_dict.items()}
         self.load_state_dict(state_dict)
 
-    def _get_optimizer(self, lr: float) -> Optimizer:
-        cnn_optimizer = AdamW(
-            [
-                {'params': self.Cu.parameters(), 'lr': lr * self._finetune_ratio_Cu},
-                {'params': self.Cs.parameters(), 'lr': lr},
-            ],
-        )
-        return cnn_optimizer
+    def _optim_groups(self, lr: float) -> list:
+        layers = {
+            'cu': self.Cu,
+            'cs': self.Cs,
+        }
+
+        optim_groups = []
+        freeze_list = ['cu']
+        for layer_name, layer in layers.items():
+            current_lr = lr * self._finetune_ratio if layer_name in freeze_list else lr
+            optim_groups.append({'params': layer.parameters(), 'lr': current_lr})
+            logger.info(f"{layer_name}: {current_lr}")
+        return optim_groups
 
     @property
     def name(self) -> str:
         return 'CNN'
 
+    @property
+    def num_classes(self) -> int:
+        return self._num_classes
+
 
 class FontResNet(nn.Module):
-    def __init__(self, num_classes: int = VFR_FONTS_NUM, backbone: str = 'resnet50'):
+    def __init__(
+        self,
+        num_classes: int = VFR_FONTS_NUM,
+        backbone: str = 'resnet50',
+        finetune_ratio: Optional[float] = 0.0,
+    ):
         super(FontResNet, self).__init__()
-
+        self._num_classes = num_classes
+        self._finetune_ratio = finetune_ratio
         if backbone == 'resnet50':
             # Load the ResNet-50 model for grey-scale
-            self.resnet_ = ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes)
+            resnet_model = ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes)
         elif backbone == 'resnet18':
             # Load the ResNet-18 model for grey-scale
-            self.resnet_ = ResNet(BasicBlock, [2, 2, 2, 2], num_classes=num_classes)
+            resnet_model = ResNet(BasicBlock, [2, 2, 2, 2], num_classes=num_classes)
         else:
             raise ValueError('Invalid backbone')
-
-        # Remove the last fully connected layer to get the embeddings
-        modules = list(self.resnet_.children())[:-1]
-        self.resnet = nn.Sequential(*modules)
-
-        # Embedding layer
-        # self.embedding = nn.Linear(self.resnet.fc.in_features, 512)
+        # Separate out the ResNet components
+        self.conv1 = resnet_model.conv1
+        self.bn1 = resnet_model.bn1
+        self.relu = resnet_model.relu
+        self.maxpool = resnet_model.maxpool
+        self.layer1 = resnet_model.layer1
+        self.layer2 = resnet_model.layer2
+        self.layer3 = resnet_model.layer3
+        self.layer4 = resnet_model.layer4
+        self.avgpool = resnet_model.avgpool
 
         # Classification layer
-        self.fc = nn.Linear(self.resnet_.fc.in_features, num_classes)
+        self.fc = nn.Linear(resnet_model.fc.in_features, self._num_classes)
 
     def forward(self, X: Tensor) -> Tensor:
-        # X = self.resnet(X)
-        # X = torch.flatten(X, 1)
-        # # X = self.embedding(X)
-        # X = self.fc(X)
-        X = self.resnet_(X)
+        X = self.conv1(X)
+        X = self.bn1(X)
+        X = self.relu(X)
+        X = self.maxpool(X)
+        X = self.layer1(X)
+        X = self.layer2(X)
+        X = self.layer3(X)
+        X = self.layer4(X)
+        X = self.avgpool(X)
+        X = torch.flatten(X, 1)
+        X = self.fc(X)
         return X
 
     def _get_optimizer(self, lr: float, weigt_decay: float) -> Optimizer:
@@ -202,6 +228,32 @@ class FontResNet(nn.Module):
             state_dict = {k[7:]: v for k, v in state_dict.items()}
         self.load_state_dict(state_dict)
 
+    def _optim_groups(self, lr: float) -> list:
+        layers = {
+            'conv1': self.conv1,
+            'bn1': self.bn1,
+            'layer1': self.layer1,
+            'layer2': self.layer2,
+            'layer3': self.layer3,
+            'layer4': self.layer4,
+            'avgpool': self.avgpool,
+            'fc': self.fc,
+        }
+
+        optim_groups = []
+        freeze_list = ['conv1', 'bn1', 'layer1', 'layer2', 'layer3']
+        # no_finetune_list = ['layer4', 'avgpool', 'fc']
+        for layer_name, layer in layers.items():
+            current_lr = lr * self._finetune_ratio if layer_name in freeze_list else lr
+            optim_groups.append({'params': layer.parameters(), 'lr': current_lr})
+            logger.info(f"{layer_name}: {current_lr}")
+
+        return optim_groups
+
     @property
     def name(self) -> str:
         return 'ResNet'
+
+    @property
+    def num_classes(self) -> int:
+        return self._num_classes

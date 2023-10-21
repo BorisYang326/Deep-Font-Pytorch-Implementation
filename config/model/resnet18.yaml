@@ -1,4 +1,4 @@
 _target_: src.model.FontResNet
 _partial_: true
 backbone: resnet18
-
+finetune_ratio: 1.0
