@@ -1,5 +1,5 @@
 import os
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset,Subset
 from PIL import Image
 import random
 from abc import ABC, abstractmethod
@@ -189,7 +189,7 @@ class VFRSynHDF5Dataset(Dataset):
         self._images = self.hf['images']
         self._labels = self.hf['labels']
         self._hdf5_file_path = hdf5_file_path
-        self.transform = transform
+        self._transform = transform
         with open(font_list_path, 'r') as f:
             self._font_families = f.read().splitlines()
         with h5py.File(self._hdf5_file_path, 'r') as f:
@@ -236,8 +236,8 @@ class VFRSynHDF5Dataset(Dataset):
         image_byte_array = self._images[idx]
         image = Image.open(io.BytesIO(image_byte_array))
 
-        if self.transform:
-            image = self.transform(image)
+        if self._transform:
+            image = self._transform(image)
         # convert font-family name from byte to str
         font = self._labels[idx].decode("utf-8")
         # logger.info(f"font: {font}")
@@ -281,3 +281,30 @@ class VFRSynHDF5Dataset(Dataset):
         self._labels = partial_labels
         # replace full font list with partial one.
         # self._font_families = list(set(partial_labels_))
+    
+    
+    @property
+    def transform(self):
+        return self._transform
+    
+    @transform.setter
+    def transform(self, transform: transforms.Compose):
+        if self._transform is not None:
+            logger.warning("Transform already set, will overwrite it.")
+            logger.warning(f"Old transform: {self._transform}")
+        self._transform = transform
+        logger.debug(f"New transform: {self._transform}")
+        
+class TransformWrapper(Dataset):
+    def __init__(self, base_dataset:Subset, transform:transforms.Compose):
+        self.base_dataset = base_dataset
+        self.transform = transform
+
+    def __len__(self)->int:
+        return len(self.base_dataset)
+
+    def __getitem__(self, idx:int)->Tuple[Image.Image, int]:
+        img, label = self.base_dataset[idx]
+        assert self.base_dataset.dataset.transform is None, "base_dataset should not have transform."
+        img = self.transform(img)
+        return img, label

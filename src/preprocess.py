@@ -7,9 +7,7 @@ from typing import Optional
 from torch import Tensor
 from typing import List, Any
 from PIL import Image
-from .config import SQUEEZE_RATIO,INPUT_SIZE
-
-
+from .config import SQUEEZE_RATIO, INPUT_SIZE, NUM_RANDOM_CROP
 
 
 class GaussianNoise(torch.nn.Module):
@@ -117,8 +115,8 @@ class VariableAspectRatio(nn.Module):
     ):
         super(VariableAspectRatio, self).__init__()
         assert isinstance(fixed_height, int), 'fixed_height must be an integer.'
-        assert isinstance(
-            [min_ratio, max_ratio], float
+        assert isinstance(min_ratio, float) and isinstance(
+            max_ratio, float
         ), 'min_ratio and max_ratio must be floats.'
         self.fixed_height = fixed_height
         self.min_ratio = min_ratio
@@ -146,7 +144,7 @@ class VariableAspectRatio(nn.Module):
         )
 
 
-class SqueezingCrop(torch.nn.Module):
+class Squeezing(torch.nn.Module):
     """Squeezing operation for image tensors.
 
     The operation resizes the image to a given height and adjusts the width based on a specified aspect ratio.
@@ -157,7 +155,7 @@ class SqueezingCrop(torch.nn.Module):
     """
 
     def __init__(self, height: int = INPUT_SIZE, aspect_ratio: float = SQUEEZE_RATIO):
-        super(SqueezingCrop, self).__init__()
+        super(Squeezing, self).__init__()
         assert isinstance(height, int), 'height must be an integer.'
         assert isinstance(aspect_ratio, float), 'aspect_ratio must be a float.'
         self.height = height
@@ -173,11 +171,64 @@ class SqueezingCrop(torch.nn.Module):
         """
         assert isinstance(tensor_img, Tensor), 'input must be a tensor.'
         new_width = int(self.height * self.aspect_ratio)
+        # Resize the tensor to the desired height and computed width
+        resized_tensor = F.resize(tensor_img, (self.height, new_width), antialias=True)
+        return resized_tensor
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(height={self.height}, aspect_ratio={self.aspect_ratio})"
+
+
+class SqueezingMultiCrop(torch.nn.Module):
+    """Squeezing operation for image tensors.
+
+    The operation resizes the image to a given height and adjusts the width based on a specified aspect ratio.
+
+    Args:
+        height (int): The desired height of the output image.
+        aspect_ratio (float): The desired width-to-height aspect ratio for the output image.
+        num_crops (int): The number of random crops to generate.
+    """
+
+    def __init__(
+        self,
+        height: int,
+        aspect_ratio: float,
+        num_crops: int,
+    ):
+        super(SqueezingMultiCrop, self).__init__()
+        assert isinstance(height, int), 'height must be an integer.'
+        assert isinstance(aspect_ratio, float), 'aspect_ratio must be a float.'
+        self.height = height
+        self.aspect_ratio = aspect_ratio
+        self.num_crops = num_crops
+
+    def forward(self, tensor_img: Tensor) -> Tensor:
+        """
+        Args:
+            tensor_img (torch.Tensor): The input image tensor of shape [C, H, W].
+
+        Returns:
+            torch.Tensor: The squeezed image tensor.
+        """
+        assert isinstance(tensor_img, Tensor), 'input must be a tensor.'
+        assert tensor_img.dim() == 3, 'input must be a 3D tensor(grey-scale).'
+        C, H, W = tensor_img.shape
+        new_width = int(self.height * self.aspect_ratio)
 
         # Resize the tensor to the desired height and computed width
         resized_tensor = F.resize(tensor_img, (self.height, new_width), antialias=True)
-        cropped_tensor = F.center_crop(resized_tensor, self.height)
-        return cropped_tensor
+
+        # Randomly crop the tensor multiple times
+        crops = []
+        for _ in range(self.num_crops):
+            left = random.randint(0, new_width - self.height)
+            cropped_tensor = resized_tensor[
+                :, : self.height, left : left + self.height
+            ]
+            crops.append(cropped_tensor)
+
+        return crops
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(height={self.height}, aspect_ratio={self.aspect_ratio})"
@@ -227,7 +278,7 @@ def transform_pipeline(squeeze_ratio: float = SQUEEZE_RATIO) -> transforms.Compo
             transforms.Grayscale(),
             transforms.ToTensor(),
             RandomTransforms(chosen_transforms),
-            SqueezingCrop(INPUT_SIZE, squeeze_ratio),
+            Squeezing(INPUT_SIZE, squeeze_ratio),
         ]
     )
     return transformations
@@ -266,19 +317,40 @@ TRANSFORMS_CROP = transforms.Compose(
     ]
 )
 
-TRANSFORMS_SQUEEZE = transforms.Compose(
+TRANSFORMS_EVAL = transforms.Compose(
     [
         transforms.Grayscale(),
         transforms.ToTensor(),
-        SqueezingCrop(INPUT_SIZE, SQUEEZE_RATIO),
+        Squeezing(INPUT_SIZE, SQUEEZE_RATIO),
+        transforms.CenterCrop(INPUT_SIZE),
     ]
 )
 
-# TRANSFORMS_CNN = transform_pipeline()
+TRANSFORMS_TRAIN = transforms.Compose(
+    [
+        transforms.Grayscale(),
+        transforms.ToTensor(),
+        VariableAspectRatio(INPUT_SIZE),
+        # transforms.GaussianBlur(3, sigma=(2.5, 3.5)),
+        transforms.RandomPerspective(fill=1.0),
+        # SqueezingMultiCrop(INPUT_SIZE, SQUEEZE_RATIO, NUM_RANDOM_CROP),
+        Squeezing(INPUT_SIZE, SQUEEZE_RATIO),
+        transforms.RandomCrop(INPUT_SIZE),
+    ]
+)
+
+
+def custom_collate_fn(batch):
+    images, labels = zip(*batch)
+    # Flatten the list of image patches
+    images = [img for sublist in images for img in sublist]
+    # Repeat labels for each patch
+    labels = [label for label in labels for _ in range(NUM_RANDOM_CROP)]
+    return torch.stack(images), torch.tensor(labels)
+
+
+# TRANSFORMS_TRAIN = transform_pipeline()
 
 # img = Image.open('./test_images/syn/2123129.png')
 # img_crop = TRANSFORMS_CROP(img)
 # img_crop.save('./test_images/syn/2123129_crop.png')
-
-
-

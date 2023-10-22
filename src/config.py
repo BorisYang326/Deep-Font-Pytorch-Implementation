@@ -6,6 +6,7 @@ INPUT_SIZE = 105
 VFR_FONTS_NUM = 2383
 SYN_DATA_COUNT_PER_FONT = 1000
 SQUEEZE_RATIO = 2.5
+NUM_RANDOM_CROP = 5
 @dataclass
 class TrainConfig:
     num_classes: int = 2383

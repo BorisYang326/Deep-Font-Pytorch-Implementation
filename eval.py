@@ -1,14 +1,17 @@
 import torch
-from src.preprocess import TRANSFORMS_SQUEEZE
+from src.preprocess import TRANSFORMS_EVAL, TRANSFORMS_MULTI
 from PIL import Image
-from src.model import FontResNet
 import os
 import torch.nn.functional as F
 import argparse
 from typing import List, Tuple
+from torch import Tensor
 from src.model import SCAE, CNN, FontResNet
+import pickle
+import matplotlib.pyplot as plt
+from torchvision import transforms
 
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -16,6 +19,7 @@ def get_image_font_list(
     img_list_path: str, font_list_path: str
 ) -> Tuple[List[str], List[str]]:
     image_list = []
+    img_list_path = os.path.join(ROOT_DIR, img_list_path)
     for f in os.listdir(img_list_path):
         if os.path.isfile(os.path.join(img_list_path, f)) and (
             f.endswith('.jpg') or f.endswith('.png')
@@ -54,7 +58,7 @@ def get_model(
     return model
 
 
-def get_font_name(output, font_books, gt_font_name):
+def get_font_name(output: Tensor, font_books: List[str], gt_font_name: str):
     topk_values, topk_indices = torch.topk(output, dim=1, k=3)
     topk_indices_list = topk_indices.squeeze().tolist()
     topk_values_list = topk_values.squeeze().cpu().numpy()
@@ -64,26 +68,35 @@ def get_font_name(output, font_books, gt_font_name):
     return font_name_list, font_scores_list, hit_flag
 
 
+def draw_class_acc(class_acc_pkl_path: str):
+    class_acc_dict = pickle.load(open(class_acc_pkl_path, 'rb'))
+    plt.figure(figsize=(20, 10))
+    plt.bar(range(len(class_acc_dict)), list(class_acc_dict.values()), align='center')
+    plt.xticks(range(len(class_acc_dict)), list(class_acc_dict.keys()), rotation=90)
+    plt.title('Class Accuracy')
+    plt.savefig('class_acc.png')
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('model', type=str, default="SCAE")
-    parser.add_argument('num_classes', type=int, default=2383)
+    parser.add_argument('--model', type=str, default="resnet50")
+    parser.add_argument('--num_classes', type=int, default=2383)
     parser.add_argument(
-        'scae_weight_path', type=str, default="./weights/SCAE/scae_weights.pth"
+        '--scae_weight_path', type=str, default="./weights/SCAE/scae_weights.pth"
     )
     parser.add_argument(
-        'cnn_weight_path', type=str, default="./weights/CNN/cnn_weights_bk.pth"
+        '--cnn_weight_path', type=str, default="./weights/CNN/CNN_weights_39.pth"
     )
     parser.add_argument(
-        'resent_weight_path',
+        '--resent_weight_path',
         type=str,
-        default="./weights/Resnet-50/ResNet_full_weights_13.pth",
+        default="./weights/Resnet-50/ResNet_weights_19.pth",
     )
     parser.add_argument(
-        'font_book_path', type=str, default="/public/dataset/AdobeVFR/fontlist.txt"
+        '--font_book_path', type=str, default="/public/dataset/AdobeVFR/fontlist.txt"
     )
-    parser.add_argument('test_folder', type=str, default="./test_images/syn/train/")
-    parser.add_argument('result_folder', type=str, default="./result/")
+    parser.add_argument('--test_folder', type=str, default="./test_images/syn/train/")
+    parser.add_argument('--result_folder', type=str, default="./result/")
     args = parser.parse_args()
     if not os.path.isdir(args.result_folder):
         os.mkdir(args.result_folder)
@@ -98,13 +111,23 @@ def main():
     )
     for k, image_path in enumerate(image_list):
         with torch.no_grad():
+            model.eval()
             gt_font_name = image_path.split('/')[-1].split('.')[0].split('_')[0]
-            image = TRANSFORMS_SQUEEZE(Image.open(image_path))
+            image = TRANSFORMS_EVAL(Image.open(image_path))
+            images = TRANSFORMS_MULTI(Image.open(image_path))
+            images_pil = [transforms.ToPILImage()(image) for image in images]
             # image_crop = TRANSFORMS_CROP(Image.open(image_path))
             image = image.unsqueeze(0).to(DEVICE)
-            # image_pil = transforms.ToPILImage()(image.squeeze(0).cpu())
+            image_pil = transforms.ToPILImage()(image.squeeze(0).cpu())
             # image_crop_pil = transforms.ToPILImage()(image_crop)
-            # image_pil.save(os.path.join(result_folder, image_path.split('/')[-1]))
+            image_pil.save(os.path.join(args.result_folder, image_path.split('/')[-1]))
+            for i, image_pil in enumerate(images_pil):
+                image_pil.save(
+                    os.path.join(
+                        args.result_folder,
+                        image_path.split('/')[-1].split('.')[0] + f'_{i}.jpg',
+                    )
+                )
             # image_crop_pil.save(os.path.join(result_folder, image_path.split('/')[-1].split('.')[0]+'_crop.jpg'))
             output = F.softmax(model(image), dim=1)
             font_name_list, font_scores_list, hit_flag = get_font_name(
@@ -115,10 +138,14 @@ def main():
                     k + 1, len(image_list), image_path, str(hit_flag)
                 )
             )
+            print('Predicted label: {:d}'.format(torch.argmax(output, dim=1).item()))
             for font, score in zip(font_name_list, font_scores_list):
                 print(f"Font: {font}, Score: {score}")
                 print('-----------------------------------------------')
 
 
 if __name__ == '__main__':
+    # pkl_path = './multirun/2023-10-21/23-19-37/0/saved_models/class_accuracy.pkl'
+    # pkl_path = './outputs/2023-10-21/16-32-10/saved_models/class_accuracy.pkl'
+    # draw_class_acc(pkl_path)
     main()
