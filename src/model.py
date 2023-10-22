@@ -83,7 +83,7 @@ class CNN(nn.Module):
         self._finetune_ratio = finetune_ratio
         if self._use_SCAE:
             self._scae._load_weights(encoder_weight_path)
-            print("Using SCAE weights")
+            logger.info("Using SCAE weights")
             self.Cu = nn.Sequential(
                 self._scae.encoder.conv1,
                 nn.ReLU(),  # output shape: 64 * 48 * 48
@@ -95,7 +95,7 @@ class CNN(nn.Module):
                 nn.MaxPool2d(kernel_size=2),  # output shape: 128 * 12 * 12
             )
         else:
-            print("Don't transfer from SCAE.")
+            logger.info("Don't transfer from SCAE.")
             self.Cu = nn.Sequential(
                 nn.Conv2d(1, 64, kernel_size=48, stride=1),
                 nn.ReLU(),
