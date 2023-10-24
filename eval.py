@@ -1,5 +1,5 @@
 import torch
-from src.preprocess import TRANSFORMS_EVAL, TRANSFORMS_MULTI
+from src.preprocess import TRANSFORMS_EVAL, TRANSFORMS_TRAIN,AUGMENTATION_LIST
 from PIL import Image
 import os
 import torch.nn.functional as F
@@ -10,7 +10,8 @@ from src.model import SCAE, CNN, FontResNet
 import pickle
 import matplotlib.pyplot as plt
 from torchvision import transforms
-
+from einops import rearrange
+from src.utils import augment_hdf5_preprocess
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -90,7 +91,7 @@ def main():
     parser.add_argument(
         '--resent_weight_path',
         type=str,
-        default="./weights/Resnet-50/ResNet_weights_19.pth",
+        default="./outputs/2023-10-22/21-13-49/saved_models/ResNet_weights_10.pth",
     )
     parser.add_argument(
         '--font_book_path', type=str, default="/public/dataset/AdobeVFR/fontlist.txt"
@@ -114,21 +115,20 @@ def main():
             model.eval()
             gt_font_name = image_path.split('/')[-1].split('.')[0].split('_')[0]
             image = TRANSFORMS_EVAL(Image.open(image_path))
-            images = TRANSFORMS_MULTI(Image.open(image_path))
-            images_pil = [transforms.ToPILImage()(image) for image in images]
-            # image_crop = TRANSFORMS_CROP(Image.open(image_path))
-            image = image.unsqueeze(0).to(DEVICE)
-            image_pil = transforms.ToPILImage()(image.squeeze(0).cpu())
-            # image_crop_pil = transforms.ToPILImage()(image_crop)
-            image_pil.save(os.path.join(args.result_folder, image_path.split('/')[-1]))
-            for i, image_pil in enumerate(images_pil):
-                image_pil.save(
-                    os.path.join(
-                        args.result_folder,
-                        image_path.split('/')[-1].split('.')[0] + f'_{i}.jpg',
-                    )
-                )
-            # image_crop_pil.save(os.path.join(result_folder, image_path.split('/')[-1].split('.')[0]+'_crop.jpg'))
+            ### DEBUG PART ###
+            # image_train = TRANSFORMS_TRAIN(Image.open(image_path))
+            # image_train_pil = transforms.ToPILImage()(image_train)
+            # image_train_pil.save(
+            #     os.path.join(
+            #         os.path.join(args.result_folder, 'train'),
+            #         image_path.split('/')[-1].split('.')[0] + '_train.jpg',
+            #     )
+            # )
+
+            # image_pil = transforms.ToPILImage()(image.squeeze(0).cpu())
+            # image_pil.save(os.path.join(os.path.join(args.result_folder, 'eval'), image_path.split('/')[-1]))
+            ### DEBUG PART END ###
+            image = rearrange(image, 'c h w -> 1 c h w').to(DEVICE)
             output = F.softmax(model(image), dim=1)
             font_name_list, font_scores_list, hit_flag = get_font_name(
                 output, font_books, gt_font_name
@@ -148,4 +148,5 @@ if __name__ == '__main__':
     # pkl_path = './multirun/2023-10-21/23-19-37/0/saved_models/class_accuracy.pkl'
     # pkl_path = './outputs/2023-10-21/16-32-10/saved_models/class_accuracy.pkl'
     # draw_class_acc(pkl_path)
-    main()
+    augment_hdf5_preprocess('/public/dataset/AdobeVFR/hdf5/VFR_syn_train.hdf5', AUGMENTATION_LIST, '/public/dataset/AdobeVFR/hdf5/VFR_syn_train_aug_bk.hdf5',4096)
+    # main()

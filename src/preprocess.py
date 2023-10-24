@@ -6,43 +6,38 @@ import torch.nn as nn
 from typing import Optional
 from torch import Tensor
 from typing import List, Any
-from PIL import Image
+from PIL import Image, ImageEnhance
+import numpy as np
 from .config import SQUEEZE_RATIO, INPUT_SIZE, NUM_RANDOM_CROP
 
 
 class GaussianNoise(torch.nn.Module):
-    """Add Gaussian noise to a tensor.
+    """Add Gaussian noise to a PIL image.
 
     Args:
         mean (float): Mean of the Gaussian noise.
         std (float): Standard deviation of the Gaussian noise.
     """
 
-    def __init__(self, mean: int = 0.0, std: int = 3.0):
+    def __init__(self, mean: float = 0.0, std: float = 10.0):
         super(GaussianNoise, self).__init__()
-        # The scale factor is used to scale the noise tensor to the same range as the input tensor
-        # Since torch transforms work with PIL images, the input tensor is expected to be in the range [0, 1]
-        assert isinstance(mean, int), 'mean must be an integer.'
-        assert isinstance(std, int), 'std must be an integer.'
-        self.scale_factor = 255.0
-        self.mean = mean / self.scale_factor
-        self.std = std / self.scale_factor
+        self.mean = mean
+        self.std = std
 
-    def forward(self, tensor: Tensor) -> Tensor:
-        """Apply Gaussian noise to the input tensor.
+    def forward(self, pil_image: Image.Image) -> Image.Image:
+        """Apply Gaussian noise to the input PIL image.
 
         Args:
-            tensor (torch.Tensor): Input tensor.
+            pil_image (PIL.Image): Input PIL image.
 
         Returns:
-            torch.Tensor: Tensor with added Gaussian noise.
+            PIL.Image: PIL image with added Gaussian noise.
         """
-        assert isinstance(tensor, Tensor), 'input must be a tensor.'
-        noise = torch.randn(tensor.size(), device=tensor.device) * self.std + self.mean
-        noisy_tensor = tensor + noise
-        # Clip the values to be in [0, 1] range
-        noisy_tensor = torch.clamp(noisy_tensor, 0, 1)
-        return noisy_tensor
+        np_image = np.asarray(pil_image)
+        noise = np.random.normal(self.mean, self.std, np_image.shape)
+        noisy_np_image = np.clip(np_image + noise, 0, 255)
+        noisy_pil_image = Image.fromarray(np.uint8(noisy_np_image))
+        return noisy_pil_image
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(mean={self.mean}, std={self.std})"
@@ -122,15 +117,17 @@ class VariableAspectRatio(nn.Module):
         self.min_ratio = min_ratio
         self.max_ratio = max_ratio
 
-    def forward(self, img: Tensor) -> Tensor:
-        assert isinstance(img, Tensor), 'input must be a tensor.'
+    def forward(self, img: Image.Image) -> Image.Image:
+        assert isinstance(img, Image.Image), 'input must be a PIL Image.'
+
         # Get a random width ratio from the specified range
         width_ratio = (
             torch.rand(1).item() * (self.max_ratio - self.min_ratio) + self.min_ratio
         )
 
         # Calculate new width
-        new_width = int(img.shape[-1] * width_ratio)
+        current_width, _ = img.size
+        new_width = int(current_width * width_ratio)
 
         # Resize the image
         return F.resize(img, (self.fixed_height, new_width), antialias=True)
@@ -161,7 +158,7 @@ class Squeezing(torch.nn.Module):
         self.height = height
         self.aspect_ratio = aspect_ratio
 
-    def forward(self, tensor_img: Tensor) -> Tensor:
+    def forward(self, img: Image) -> Image:
         """
         Args:
             tensor_img (torch.Tensor): The input image tensor of shape [B, C, H, W].
@@ -169,11 +166,11 @@ class Squeezing(torch.nn.Module):
         Returns:
             torch.Tensor: The squeezed image tensor.
         """
-        assert isinstance(tensor_img, Tensor), 'input must be a tensor.'
+        assert isinstance(img, Image.Image), 'input must be a PIL Image.'
         new_width = int(self.height * self.aspect_ratio)
         # Resize the tensor to the desired height and computed width
-        resized_tensor = F.resize(tensor_img, (self.height, new_width), antialias=True)
-        return resized_tensor
+        squeezed_img = F.resize(img, (self.height, new_width), antialias=True)
+        return squeezed_img
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(height={self.height}, aspect_ratio={self.aspect_ratio})"
@@ -223,15 +220,53 @@ class SqueezingMultiCrop(torch.nn.Module):
         crops = []
         for _ in range(self.num_crops):
             left = random.randint(0, new_width - self.height)
-            cropped_tensor = resized_tensor[
-                :, : self.height, left : left + self.height
-            ]
+            cropped_tensor = resized_tensor[:, : self.height, left : left + self.height]
             crops.append(cropped_tensor)
 
         return crops
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(height={self.height}, aspect_ratio={self.aspect_ratio})"
+
+
+class Shading(torch.nn.Module):
+    def __init__(self, brightness_factor: float = 0.75, contrast_factor: float = 0.8):
+        """
+        Initialize the Shading transform.
+
+        Args:
+        - brightness_factor (float): Factor to adjust the brightness. 1 is original image,
+                                     < 1 will darken the image, and > 1 will brighten the image.
+        - contrast_factor (float): Factor to adjust the contrast. 1 is original image,
+                                   < 1 will decrease the contrast, and > 1 will increase the contrast.
+        """
+        super(Shading, self).__init__()
+        self.brightness_factor = brightness_factor
+        self.contrast_factor = contrast_factor
+
+    def forward(self, pil_image: Image.Image) -> Image.Image:
+        """
+        Apply shading to the input PIL image.
+
+        Args:
+        - pil_image (PIL.Image): Input PIL image.
+
+        Returns:
+        - PIL.Image: Shaded PIL image.
+        """
+        enhancer = ImageEnhance.Brightness(pil_image)
+        shaded_img = enhancer.enhance(self.brightness_factor)
+
+        enhancer = ImageEnhance.Contrast(shaded_img)
+        shaded_img = enhancer.enhance(self.contrast_factor)
+
+        return shaded_img
+
+    def __repr__(self) -> str:
+        return (
+            self.__class__.__name__
+            + f"(brightness_factor={self.brightness_factor}, contrast_factor={self.contrast_factor})"
+        )
 
 
 class RandomTransforms(torch.nn.Module):
@@ -295,6 +330,15 @@ def pad_to_square(img: Image.Image) -> Any:
     return transforms.functional.pad(img, padding, 255, 'constant')
 
 
+def custom_collate_fn(batch):
+    images, labels = zip(*batch)
+    # Flatten the list of image patches
+    images = [img for sublist in images for img in sublist]
+    # Repeat labels for each patch
+    labels = [label for label in labels for _ in range(NUM_RANDOM_CROP)]
+    return torch.stack(images), torch.tensor(labels)
+
+
 TRANSFORMS_PAD = transforms.Compose(
     [
         transforms.Grayscale(),
@@ -329,28 +373,22 @@ TRANSFORMS_EVAL = transforms.Compose(
 TRANSFORMS_TRAIN = transforms.Compose(
     [
         transforms.Grayscale(),
-        transforms.ToTensor(),
+        GaussianNoise(),
+        transforms.GaussianBlur(3, sigma=(2.5, 3.5)),
+        transforms.RandomPerspective(fill=255, distortion_scale=0.1),
+        Shading(),
         VariableAspectRatio(INPUT_SIZE),
-        # transforms.GaussianBlur(3, sigma=(2.5, 3.5)),
-        transforms.RandomPerspective(fill=1.0),
-        # SqueezingMultiCrop(INPUT_SIZE, SQUEEZE_RATIO, NUM_RANDOM_CROP),
         Squeezing(INPUT_SIZE, SQUEEZE_RATIO),
         transforms.RandomCrop(INPUT_SIZE),
+        transforms.ToTensor(),
     ]
 )
 
+AUGMENTATION_LIST = [
+    GaussianNoise(),
+    transforms.GaussianBlur(3, sigma=(2.5, 3.5)),
+    transforms.RandomPerspective(fill=255, distortion_scale=0.1),
+    Shading(),
+    VariableAspectRatio(INPUT_SIZE),
+]
 
-def custom_collate_fn(batch):
-    images, labels = zip(*batch)
-    # Flatten the list of image patches
-    images = [img for sublist in images for img in sublist]
-    # Repeat labels for each patch
-    labels = [label for label in labels for _ in range(NUM_RANDOM_CROP)]
-    return torch.stack(images), torch.tensor(labels)
-
-
-# TRANSFORMS_TRAIN = transform_pipeline()
-
-# img = Image.open('./test_images/syn/2123129.png')
-# img_crop = TRANSFORMS_CROP(img)
-# img_crop.save('./test_images/syn/2123129_crop.png')

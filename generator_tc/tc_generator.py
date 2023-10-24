@@ -7,23 +7,26 @@ from trdg.generators import (
 from PIL import Image
 # The generators use the same arguments as the CLI, only as parameters
 generator_A = GeneratorFromStrings(
-    strings=['AAAaaa'],
-    fonts=['/home/yangbo/projects/font_recog/generator_tc/font_source/CourierStd.ttf',  '/home/yangbo/projects/font_recog/generator_tc/font_source/FloodStd.ttf',  '/home/yangbo/projects/font_recog/generator_tc/font_source/UmbraStd.ttf'],
-    count =3,
+    strings=['Hospital'],
+    fonts=['/home/yangbo/projects/font_recog/generator_tc/font_source/CourierStd.ttf'],
+    count =2,
     size=105,
+    background_type=1
     
 )
 generator_B = GeneratorFromStrings(
-    strings=['BBBbbb'],
-    fonts=['/home/yangbo/projects/font_recog/generator_tc/font_source/CourierStd.ttf',  '/home/yangbo/projects/font_recog/generator_tc/font_source/FloodStd.ttf',  '/home/yangbo/projects/font_recog/generator_tc/font_source/UmbraStd.ttf'],
-    count =3,
+    strings=['EARTHQUAKE'],
+    fonts=['/home/yangbo/projects/font_recog/generator_tc/font_source/CourierStd.ttf'],
+    count =2,
     size=105,
+    background_type=1,
 )
 generator_H = GeneratorFromStrings(
-    strings=['HHHhhh'],
-    fonts=['/home/yangbo/projects/font_recog/generator_tc/font_source/CourierStd.ttf',  '/home/yangbo/projects/font_recog/generator_tc/font_source/FloodStd.ttf',  '/home/yangbo/projects/font_recog/generator_tc/font_source/UmbraStd.ttf'],
-    count =3,
+    strings=['exploration'],
+    fonts=['/home/yangbo/projects/font_recog/generator_tc/font_source/CourierStd.ttf'],
+    count =2,
     size=105,
+    background_type=1
 )
 for generator in [generator_A, generator_B, generator_H]:
     for img, lbl,font in generator:
