@@ -9,9 +9,13 @@ from typing import Optional
 from torch.utils.data import DataLoader
 import os
 from collections import defaultdict
-from typing import Tuple, Dict
+from typing import Tuple, Dict,List
 import pickle
-
+from einops import rearrange
+from PIL import Image
+from .config import INPUT_SIZE, SQUEEZE_RATIO_RANGE, RATIO_SAMPLES, PATCH_SAMPLES
+from .preprocess import Squeezing
+from torchvision import transforms
 
 class Trainer:
     def __init__(
@@ -188,47 +192,73 @@ class SupervisedTrainer(Trainer):
                             epoch * len(self._train_loader) + idx,
                         )
 
-    def _evaluate(self, epoch: int) -> Tuple[float, float, Dict[int, float]]:
+    def _evaluate(self) -> Tuple[float, float, Dict[int, float]]:
         self._model.eval()
         total_loss = 0
         total_accuracy = []
         correct_counts = defaultdict(int)  # Correct predictions for each class
         total_counts = defaultdict(int)  # Total predictions for each class
+
         with torch.no_grad():
-            pbar = tqdm(
-                enumerate(
-                    self._eval_loader,
-                ),
-                total=len(
-                    self._eval_loader,
-                ),
-            )
+            pbar = tqdm(enumerate(self._eval_loader), total=len(self._eval_loader))
+            
             for idx, (images, labels) in pbar:
-                images, labels = images.to(self._device), labels.to(self._device)
-                outputs = self._model(images)
-                loss = self._criterion(outputs, labels)
-                predicted_labels = outputs.argmax(dim=1)
-                total_loss += loss.item()
+                labels = labels.to(self._device)
+                batch_size = labels.size(0)
+                
+                for b in range(batch_size):
+                    image = images[b]
+                    label = labels[b]
+                    
+                    # Process the image and get list of tensors
+                    patches = self._eval_preprocess(image)
+                    
+                    all_outputs = []
+                    for patch in patches:
+                        patch = rearrange(patch, 'c h w -> 1 c h w').to(self._device)
+                        output = self._model(patch)
+                        all_outputs.append(output)
+                
+                    # Average the outputs
+                    avg_output = torch.mean(torch.stack(all_outputs), dim=0)
+                    
+                    loss = self._criterion(avg_output, label)
+                    predicted_label = avg_output.argmax(dim=1)
 
-                for label in labels.unique():
-                    correct_counts[label.item()] += (
-                        (predicted_labels[labels == label] == label).sum().item()
-                    )
-                    total_counts[label.item()] += (labels == label).sum().item()
+                    total_loss += loss.item()
+                    correct_counts[label.item()] += (predicted_label == label).sum().item()
+                    total_counts[label.item()] += 1
 
-                accuracy = (predicted_labels == labels).float().mean()
-                total_accuracy.append(accuracy.item())
+                    accuracy = (predicted_label == label).float().mean()
+                    total_accuracy.append(accuracy.item())
 
-                # Log the evaluation loss to TensorBoard
-                # self.writer.add_scalar('Evaluation Loss', loss.item(), epoch * len(eval_loader) + idx)
-
-        avg_loss = total_loss / len(self._eval_loader)
-        avg_accuracy = np.mean(total_accuracy)
-        class_accuracies = {
-            label: correct_counts[label] / total_counts[label] for label in total_counts
-        }
+            avg_loss = total_loss / len(self._eval_loader)
+            avg_accuracy = np.mean(total_accuracy)
+            class_accuracies = {
+                label: correct_counts[label] / total_counts[label] for label in total_counts
+            }
+        
         return avg_loss, avg_accuracy, class_accuracies
 
+    def _eval_preprocess(image: Image.Image) -> List[torch.Tensor]:
+        """ Process a single PIL image and return a list of tensors. """
+        ratios = np.random.uniform(SQUEEZE_RATIO_RANGE[0], SQUEEZE_RATIO_RANGE[1], RATIO_SAMPLES)
+        all_tensors = []
+
+        for ratio in ratios:
+            squeezing_transform = Squeezing(INPUT_SIZE, ratio)
+            squeezed_image = squeezing_transform(image)
+
+            for _ in range(PATCH_SAMPLES):
+                patch_transform = transforms.Compose([
+                    transforms.RandomCrop(INPUT_SIZE),
+                    transforms.Grayscale(),
+                    transforms.ToTensor()
+                ])
+                patch = patch_transform(squeezed_image)
+                all_tensors.append(patch)
+
+        return all_tensors
     def _save_weights(self, epoch: int):
         os.makedirs(self._save_path, exist_ok=True)
         path = os.path.join(self._save_path, f'{self._model_name}_weights_{epoch}.pth')

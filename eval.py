@@ -1,5 +1,5 @@
 import torch
-from src.preprocess import TRANSFORMS_EVAL, TRANSFORMS_TRAIN,AUGMENTATION_LIST
+from src.preprocess import TRANSFORMS_EVAL, TRANSFORMS_TRAIN,AUGMENTATION_LIST,Squeezing
 from PIL import Image
 import os
 import torch.nn.functional as F
@@ -9,9 +9,11 @@ from torch import Tensor
 from src.model import SCAE, CNN, FontResNet
 import pickle
 import matplotlib.pyplot as plt
+import numpy as np
 from torchvision import transforms
 from einops import rearrange
 from src.utils import augment_hdf5_preprocess
+from src.config import SQUEEZE_RATIO_RANGE,RATIO_SAMPLES,PATCH_SAMPLES,INPUT_SIZE
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -59,8 +61,8 @@ def get_model(
     return model
 
 
-def get_font_name(output: Tensor, font_books: List[str], gt_font_name: str):
-    topk_values, topk_indices = torch.topk(output, dim=1, k=3)
+def get_font_name(output: Tensor, font_books: List[str], gt_font_name: str,top_K:int=5):
+    topk_values, topk_indices = torch.topk(output, dim=1, k=top_K)
     topk_indices_list = topk_indices.squeeze().tolist()
     topk_values_list = topk_values.squeeze().cpu().numpy()
     font_name_list = [font_books[i] for i in topk_indices_list]
@@ -91,7 +93,7 @@ def main():
     parser.add_argument(
         '--resent_weight_path',
         type=str,
-        default="./outputs/2023-10-22/21-13-49/saved_models/ResNet_weights_10.pth",
+        default="./outputs/2023-10-22/21-13-49/saved_models/ResNet_weights_18.pth",
     )
     parser.add_argument(
         '--font_book_path', type=str, default="/public/dataset/AdobeVFR/fontlist.txt"
@@ -114,31 +116,44 @@ def main():
         with torch.no_grad():
             model.eval()
             gt_font_name = image_path.split('/')[-1].split('.')[0].split('_')[0]
-            image = TRANSFORMS_EVAL(Image.open(image_path))
-            ### DEBUG PART ###
-            # image_train = TRANSFORMS_TRAIN(Image.open(image_path))
-            # image_train_pil = transforms.ToPILImage()(image_train)
-            # image_train_pil.save(
-            #     os.path.join(
-            #         os.path.join(args.result_folder, 'train'),
-            #         image_path.split('/')[-1].split('.')[0] + '_train.jpg',
-            #     )
-            # )
-
-            # image_pil = transforms.ToPILImage()(image.squeeze(0).cpu())
-            # image_pil.save(os.path.join(os.path.join(args.result_folder, 'eval'), image_path.split('/')[-1]))
-            ### DEBUG PART END ###
-            image = rearrange(image, 'c h w -> 1 c h w').to(DEVICE)
-            output = F.softmax(model(image), dim=1)
-            font_name_list, font_scores_list, hit_flag = get_font_name(
-                output, font_books, gt_font_name
-            )
+            image = Image.open(image_path)
+            
+            # Sample ratios
+            ratios = np.random.uniform(SQUEEZE_RATIO_RANGE[0], SQUEEZE_RATIO_RANGE[1], RATIO_SAMPLES)
+            
+            all_outputs = []
+            for ratio in ratios:
+                squeezing_transform = Squeezing(INPUT_SIZE, ratio)
+                
+                # Apply squeezing and then sample patches
+                squeezed_image = squeezing_transform(image)
+                
+                for _ in range(PATCH_SAMPLES):
+                    patch_transform = transforms.Compose([
+                        transforms.RandomCrop(INPUT_SIZE),
+                        transforms.Grayscale(),
+                        transforms.ToTensor()
+                    ])
+                    
+                    patch = patch_transform(squeezed_image)
+                    patch = rearrange(patch, 'c h w -> 1 c h w').to(DEVICE)
+                    
+                    output = model(patch)
+                    all_outputs.append(output)
+            
+            # Average the outputs
+            avg_output = torch.mean(torch.stack(all_outputs), dim=0)
+            avg_softmax_output = F.softmax(avg_output, dim=1)
+            
+            # Your original processing for the output
+            font_name_list, font_scores_list, hit_flag = get_font_name(avg_softmax_output, font_books, gt_font_name)
+            
             print(
                 "Test image {:d}/{:d}: {:s} -> [{:s}]".format(
                     k + 1, len(image_list), image_path, str(hit_flag)
                 )
             )
-            print('Predicted label: {:d}'.format(torch.argmax(output, dim=1).item()))
+            print('Predicted label: {:d}'.format(torch.argmax(avg_softmax_output, dim=1).item()))
             for font, score in zip(font_name_list, font_scores_list):
                 print(f"Font: {font}, Score: {score}")
                 print('-----------------------------------------------')
@@ -148,5 +163,5 @@ if __name__ == '__main__':
     # pkl_path = './multirun/2023-10-21/23-19-37/0/saved_models/class_accuracy.pkl'
     # pkl_path = './outputs/2023-10-21/16-32-10/saved_models/class_accuracy.pkl'
     # draw_class_acc(pkl_path)
-    augment_hdf5_preprocess('/public/dataset/AdobeVFR/hdf5/VFR_syn_train.hdf5', AUGMENTATION_LIST, '/public/dataset/AdobeVFR/hdf5/VFR_syn_train_aug_bk.hdf5',4096)
-    # main()
+    # augment_hdf5_preprocess('/public/dataset/AdobeVFR/hdf5/VFR_syn_train.hdf5', AUGMENTATION_LIST, '/public/dataset/AdobeVFR/hdf5/VFR_syn_train_aug_bk.hdf5',4096)
+    main()

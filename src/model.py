@@ -255,6 +255,19 @@ class FontResNet(nn.Module):
 
         return optim_groups
 
+    
+    def _extract_embedding(self, X: Tensor) -> Tensor:
+        X = self.conv1(X)
+        X = self.bn1(X)
+        X = self.relu(X)
+        X = self.maxpool(X)
+        X = self.layer1(X)
+        X = self.layer2(X)
+        X = self.layer3(X)
+        X = self.layer4(X)
+        X = self.avgpool(X)
+        return torch.flatten(X, 1)
+
     @property
     def name(self) -> str:
         return 'ResNet'

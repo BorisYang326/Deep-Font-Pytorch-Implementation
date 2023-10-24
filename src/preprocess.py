@@ -362,11 +362,9 @@ TRANSFORMS_CROP = transforms.Compose(
 )
 
 TRANSFORMS_EVAL = transforms.Compose(
+    # more transform will implemented in trainer.eval()
     [
         transforms.Grayscale(),
-        transforms.ToTensor(),
-        Squeezing(INPUT_SIZE, SQUEEZE_RATIO),
-        transforms.CenterCrop(INPUT_SIZE),
     ]
 )
 
