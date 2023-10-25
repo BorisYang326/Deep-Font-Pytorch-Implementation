@@ -2,8 +2,8 @@
 defaults:
   - override /model: resnet50
 
-train_hdf5_file_path: /public/dataset/AdobeVFR/hdf5/aug/VFR_syn_train_aug.hdf5
-eval_hdf5_file_path: /public/dataset/AdobeVFR/hdf5/aug/VFR_syn_eval_aug.hdf5
+train_hdf5_file_path: /home/yangbo/cache_dataset/AdobeVFR/hdf5/aug/VFR_syn_train_aug.hdf5
+eval_hdf5_file_path: /home/yangbo/cache_dataset/AdobeVFR/hdf5/aug/VFR_syn_eval_aug.hdf5
 transforms: preaug
 
 training:

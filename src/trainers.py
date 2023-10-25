@@ -16,6 +16,8 @@ from PIL import Image
 from .config import INPUT_SIZE, SQUEEZE_RATIO_RANGE, RATIO_SAMPLES, PATCH_SAMPLES
 from .preprocess import Squeezing
 from torchvision import transforms
+import logging
+logger = logging.getLogger(__name__)
 
 class Trainer:
     def __init__(
@@ -144,7 +146,7 @@ class SupervisedTrainer(Trainer):
     def _train(self, epochs: int):
         best_acc = 0.0
         for epoch in range(epochs):
-            # self._train_epoch(epoch)
+            self._train_epoch(epoch)
             test_loss, test_acc, class_acc_dic = self._evaluate()
             self._writer.add_scalar('Test Accuracy', test_acc, epoch)
             self._writer.add_scalar('Test Loss', test_loss, epoch)
@@ -198,10 +200,9 @@ class SupervisedTrainer(Trainer):
         total_accuracy = []
         correct_counts = defaultdict(int)  # Correct predictions for each class
         total_counts = defaultdict(int)  # Total predictions for each class
-
+        logger.info("Evaluating...")
         with torch.no_grad():
             pbar = tqdm(enumerate(self._eval_loader), total=len(self._eval_loader))
-            
             for idx, (images, labels) in pbar:
                 images, labels = images.to(self._device), labels.to(self._device)
                 outputs = self._model(images)

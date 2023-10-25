@@ -22,7 +22,7 @@ class TrainConfig:
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     batch_size: int = 4096
     epochs: int = 20
-    num_workers: int = 8
+    num_workers: int = 16
     prefetch_factor: int = 2
     lr: float = 1e-4
     weight_decay: float = 1e-5

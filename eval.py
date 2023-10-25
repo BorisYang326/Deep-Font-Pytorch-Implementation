@@ -13,10 +13,8 @@ import numpy as np
 from torchvision import transforms
 from einops import rearrange
 from src.config import SQUEEZE_RATIO_RANGE, RATIO_SAMPLES, PATCH_SAMPLES, INPUT_SIZE
-from src.utils import split_and_augment_hdf5
-import h5py 
-import io
-import tqdm
+from src.utils import split_and_augment_hdf5,pre_aug_eval_hdf5_preprocess
+from src.preprocess import TRANSFORMS_EVAL
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -190,7 +188,7 @@ if __name__ == '__main__':
     #     '/public/dataset/AdobeVFR/Raw Image/VFR_real_u/scrape-wtf-new/',
     #     TRANSFORMS_TRAIN_UNSUPERVISED
     # )
-    split_and_augment_hdf5(syn_origin_hdf5_path, syn_aug_hdf5_path,'/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_train_aug.hdf5','/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_eval_aug.hdf5',0.95)
+    split_and_augment_hdf5(syn_origin_hdf5_path, syn_aug_hdf5_path,'/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_train_aug.hdf5','/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_eval_aug.hdf5',0.9)
     # extract_random_images_from_hdf5('/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_eval_aug.hdf5','./test_images/syn/test/',10)
     # main()
     

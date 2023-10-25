@@ -231,6 +231,7 @@ class VFRSynHDF5Dataset(Dataset):
     def __getitem__(self, idx: int) -> Tuple[Image.Image, int]:
         if not hasattr(self, 'hf'):
             self._open_hdf5()
+            assert self._unique_num_labels() == self._num_classes, "num_classes not match."
         assert hasattr(self, '_images') and hasattr(
             self, '_labels'
         ), 'images or labels not found in hdf5 file.'
@@ -239,7 +240,6 @@ class VFRSynHDF5Dataset(Dataset):
             self._load_partial_data()
             # now idx is the index of the image in the partial dataset
             # idx = idx % (self._num_classes * SYN_DATA_COUNT_PER_FONT)
-        assert self._unique_num_labels() == self._num_classes, "num_classes not match."
         image_byte_array = self._images[idx]
         image = Image.open(io.BytesIO(image_byte_array))
 

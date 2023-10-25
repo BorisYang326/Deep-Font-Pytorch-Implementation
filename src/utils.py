@@ -6,7 +6,7 @@ from tqdm import tqdm
 from PIL import Image
 import itertools
 from torchvision.transforms import transforms
-from typing import List
+from typing import List,Optional
 import torch.nn as nn
 from .preprocess import Squeezing
 from .config import (
@@ -156,9 +156,8 @@ def pre_aug_train_hdf5_preprocess(
 
 def pre_aug_eval_hdf5_preprocess(
     orign_hdf5_path: str,
-    transform: transforms.Compose,
     aug_hdf5_path: str,
-    batch_size: int = 1024,
+    transform: Optional[transforms.Compose]=None,
 ) -> None:
     """Augment the images in HDF5 file and save to new HDF5 file.
 
@@ -171,64 +170,33 @@ def pre_aug_eval_hdf5_preprocess(
     img_dtype = h5py.vlen_dtype(np.dtype('uint8'))
     label_dtype = h5py.string_dtype(encoding='utf-8')
     images_per_class = SYN_DATA_COUNT_PER_FONT
-    split_ratio = 0.95
-    with h5py.File(orign_hdf5_path, 'r') as original_file, h5py.File(
-        aug_hdf5_path, 'a'
-    ) as augmented_file:
-        # Create or get the datasets in HDF5 file
-        if 'images' not in augmented_file:
-            dset_images = augmented_file.create_dataset(
-                'images',
-                shape=(0,),
-                maxshape=(None,),
-                dtype=img_dtype,
-            )
-            dset_labels = augmented_file.create_dataset(
-                'labels', shape=(0,), maxshape=(None,), dtype=label_dtype
-            )
-        else:
-            dset_images = augmented_file['images']
-            dset_labels = augmented_file['labels']
+    split_ratio = 0.9
+    with h5py.File(orign_hdf5_path, 'r') as original_file:
 
         total_images = len(original_file['images'])
-        global_idx = 0
-        for idx in tqdm(
-            range(0, total_images, batch_size), desc="Batch Loop", leave=False
-        ):
-            augmented_images_byte = []
-            augmented_labels_byte = []
-
-            end_idx = min(idx + batch_size, total_images)
-            for index in tqdm(range(idx, end_idx), desc="Image Loop", leave=False):
-                relative_idx = index % images_per_class
-                if relative_idx >= images_per_class * split_ratio:
-                    image_data = original_file['images'][index]
-                    label = original_file['labels'][index]
-                    pil_img = Image.open(io.BytesIO(image_data))
+        augmented_images_byte = []
+        augmented_labels_byte = []
+        for idx in tqdm(range(0, total_images)):
+            relative_idx = idx % images_per_class
+            if relative_idx >= int(images_per_class * split_ratio):
+                image_data = original_file['images'][idx]
+                label = original_file['labels'][idx]
+                pil_img = Image.open(io.BytesIO(image_data))
+                if transform is not None:
                     augmented_image = transform(pil_img)
-
-                    # Convert the augmented PIL image to byte array
-                    with io.BytesIO() as buffer:
-                        augmented_image.save(buffer, format="PNG")
-                        img_byte_array = buffer.getvalue()
-                    augmented_images_byte.append(
-                        np.frombuffer(img_byte_array, dtype='uint8')
-                    )
-                    augmented_labels_byte.append(label)
-
-            # extend the dataset
-            dset_images.resize(global_idx + len(augmented_images_byte), axis=0)
-            dset_labels.resize(global_idx + len(augmented_labels_byte), axis=0)
-
-            # batch write the data to HDF5 file
-            dset_images[
-                global_idx : global_idx + len(augmented_images_byte)
-            ] = augmented_images_byte
-            dset_labels[
-                global_idx : global_idx + len(augmented_labels_byte)
-            ] = augmented_labels_byte
-
-            global_idx += len(augmented_images_byte)
+                else:
+                    augmented_image = pil_img
+                # Convert the augmented PIL image to byte array
+                with io.BytesIO() as buffer:
+                    augmented_image.save(buffer, format="PNG")
+                    img_byte_array = buffer.getvalue()
+                augmented_images_byte.append(
+                    np.frombuffer(img_byte_array, dtype='uint8')
+                )
+                augmented_labels_byte.append(label)
+        with h5py.File(aug_hdf5_path, 'w') as f:
+            f.create_dataset('images', data=augmented_images_byte,dtype=img_dtype)
+            f.create_dataset('labels', data=augmented_labels_byte,dtype=label_dtype)
 
 
 def split_hdf5(
