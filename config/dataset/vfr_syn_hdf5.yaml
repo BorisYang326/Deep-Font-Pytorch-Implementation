@@ -1,4 +1,5 @@
 _target_: src.datasets.VFRSynHDF5Dataset
-hdf5_file_path: /public/dataset/AdobeVFR/hdf5/VFR_syn_train.hdf5
+hdf5_file_path: ???
 font_list_path: /public/dataset/AdobeVFR/fontlist.txt
 num_classes: ${training.num_classes}
+

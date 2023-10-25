@@ -9,6 +9,7 @@ import h5py
 import io
 from .config import SYN_DATA_COUNT_PER_FONT, VFR_FONTS_NUM
 import logging
+import numpy as np
 logger = logging.getLogger(__name__)
 # with h5py.File(hdf5_file_path, 'w') as f:
 #     for idx in range(len(your_dataset)):
@@ -221,6 +222,11 @@ class VFRSynHDF5Dataset(Dataset):
 
     def __len__(self) -> int:
         return self._length
+    
+    def _unique_num_labels(self,) -> int:
+        labels_array = np.array(self._labels)
+        unique_labels, counts = np.unique(labels_array, return_counts=True)
+        return len(unique_labels)
 
     def __getitem__(self, idx: int) -> Tuple[Image.Image, int]:
         if not hasattr(self, 'hf'):
@@ -233,6 +239,7 @@ class VFRSynHDF5Dataset(Dataset):
             self._load_partial_data()
             # now idx is the index of the image in the partial dataset
             # idx = idx % (self._num_classes * SYN_DATA_COUNT_PER_FONT)
+        assert self._unique_num_labels() == self._num_classes, "num_classes not match."
         image_byte_array = self._images[idx]
         image = Image.open(io.BytesIO(image_byte_array))
 

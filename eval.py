@@ -12,14 +12,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torchvision import transforms
 from einops import rearrange
-<<<<<<< HEAD
-from src.utils import augment_hdf5_preprocess,split_and_augment_hdf5
-from src.config import SQUEEZE_RATIO_RANGE,RATIO_SAMPLES,PATCH_SAMPLES,INPUT_SIZE
-=======
-from src.utils import add_images_to_hdf5, shuffle_images_in_hdf5
 from src.config import SQUEEZE_RATIO_RANGE, RATIO_SAMPLES, PATCH_SAMPLES, INPUT_SIZE
+from src.utils import split_and_augment_hdf5
+import h5py 
+import io
+import tqdm
 
->>>>>>> 9e7e41ea2243c3181d738d69d1836b75581934c2
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -181,13 +179,18 @@ if __name__ == '__main__':
     # pkl_path = './multirun/2023-10-21/23-19-37/0/saved_models/class_accuracy.pkl'
     # pkl_path = './outputs/2023-10-21/16-32-10/saved_models/class_accuracy.pkl'
     # draw_class_acc(pkl_path)
-    syn_aug_hdf5_path = '/public/dataset/AdobeVFR/hdf5/VFR_syn_train_aug.hdf5'
-    align_aug_hdf5_path = '/public/dataset/AdobeVFR/hdf5/VFR_align_train_aug_bk.hdf5'
+    syn_origin_hdf5_path = '/public/dataset/AdobeVFR/hdf5/syn/VFR_syn_train_bk.hdf5'
+    syn_aug_hdf5_path = '/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_aug_bk.hdf5'
+
+    # align_aug_hdf5_path = '/public/dataset/AdobeVFR/hdf5/VFR_align_train_aug_bk.hdf5'
     # augment_hdf5_preprocess('/public/dataset/AdobeVFR/hdf5/VFR_syn_train_bk.hdf5', AUGMENTATION_LIST, syn_aug_hdf5_path,4096)
     # shutil.copy2(syn_aug_hdf5_path, align_aug_hdf5_path)
-    add_images_to_hdf5(
-        align_aug_hdf5_path,
-        '/public/dataset/AdobeVFR/Raw Image/VFR_real_u/scrape-wtf-new/',
-    )
-    shuffle_images_in_hdf5(align_aug_hdf5_path)
+    # add_images_to_hdf5(
+    #     align_aug_hdf5_path,
+    #     '/public/dataset/AdobeVFR/Raw Image/VFR_real_u/scrape-wtf-new/',
+    #     TRANSFORMS_TRAIN_UNSUPERVISED
+    # )
+    split_and_augment_hdf5(syn_origin_hdf5_path, syn_aug_hdf5_path,'/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_train_aug.hdf5','/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_eval_aug.hdf5',0.95)
+    # extract_random_images_from_hdf5('/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_eval_aug.hdf5','./test_images/syn/test/',10)
     # main()
+    

@@ -5,11 +5,39 @@ import random
 import torch.nn as nn
 from typing import Optional
 from torch import Tensor
-from typing import List, Any
+from typing import List, Any, Tuple
 from PIL import Image, ImageEnhance
 import numpy as np
-from .config import SQUEEZE_RATIO, INPUT_SIZE, NUM_RANDOM_CROP
+from .config import SQUEEZE_RATIO, INPUT_SIZE, NUM_RANDOM_CROP, EVAL_SQUEEZE_RATIO_RANGE
 
+
+class FixedHeightResize(nn.Module):
+    """Resizes a PIL image to a fixed height while maintaining its aspect ratio.
+
+    Args:
+        size (int): The desired height of the output image.
+    """
+
+    def __init__(self, size: int):
+        super(FixedHeightResize, self).__init__()
+        self.size = size
+
+    def forward(self, pil_image: Image.Image) -> Image.Image:
+        """Resize the input PIL image to a fixed height while maintaining its aspect ratio.
+
+        Args:
+            pil_image (PIL.Image): Input PIL image.
+
+        Returns:
+            PIL.Image: Resized PIL image.
+        """
+        w, h = pil_image.size
+        aspect_ratio = np.divide(float(h), float(w))
+        new_w = np.ceil(np.divide(self.size, aspect_ratio)).astype(int)
+        return F.resize(pil_image, (self.size, new_w))
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(size={self.size})"
 
 class GaussianNoise(torch.nn.Module):
     """Add Gaussian noise to a PIL image.
@@ -151,10 +179,10 @@ class Squeezing(torch.nn.Module):
         aspect_ratio (float): The desired width-to-height aspect ratio for the output image.
     """
 
-    def __init__(self, height: int = INPUT_SIZE, aspect_ratio: float = SQUEEZE_RATIO):
+    def __init__(self, height: int, aspect_ratio: Optional[float]=None):
         super(Squeezing, self).__init__()
         assert isinstance(height, int), 'height must be an integer.'
-        assert isinstance(aspect_ratio, float), 'aspect_ratio must be a float.'
+        # assert isinstance(aspect_ratio, float), 'aspect_ratio must be a float.'
         self.height = height
         self.aspect_ratio = aspect_ratio
 
@@ -167,6 +195,7 @@ class Squeezing(torch.nn.Module):
             torch.Tensor: The squeezed image tensor.
         """
         assert isinstance(img, Image.Image), 'input must be a PIL Image.'
+        assert self.aspect_ratio is not None, 'aspect_ratio must be specified.'
         new_width = int(self.height * self.aspect_ratio)
         # Resize the tensor to the desired height and computed width
         squeezed_img = F.resize(img, (self.height, new_width), antialias=True)
@@ -176,57 +205,38 @@ class Squeezing(torch.nn.Module):
         return f"{self.__class__.__name__}(height={self.height}, aspect_ratio={self.aspect_ratio})"
 
 
-class SqueezingMultiCrop(torch.nn.Module):
-    """Squeezing operation for image tensors.
+class RandomSqueezing(Squeezing):
+    """Random squeezing operation for image tensors.
 
-    The operation resizes the image to a given height and adjusts the width based on a specified aspect ratio.
+    The operation resizes the image to a given height and adjusts the width based on a random aspect ratio sampled from a range.
 
     Args:
         height (int): The desired height of the output image.
-        aspect_ratio (float): The desired width-to-height aspect ratio for the output image.
-        num_crops (int): The number of random crops to generate.
+        aspect_ratio_range (tuple): Range (min, max) from which to sample the aspect ratio.
     """
 
     def __init__(
         self,
         height: int,
-        aspect_ratio: float,
-        num_crops: int,
+        aspect_ratio_range: Tuple[float, float],
     ):
-        super(SqueezingMultiCrop, self).__init__()
-        assert isinstance(height, int), 'height must be an integer.'
-        assert isinstance(aspect_ratio, float), 'aspect_ratio must be a float.'
-        self.height = height
-        self.aspect_ratio = aspect_ratio
-        self.num_crops = num_crops
+        # Initialize the parent class without setting a fixed aspect ratio
+        super(RandomSqueezing, self).__init__(height=height)
+        assert (
+            isinstance(aspect_ratio_range, tuple) and len(aspect_ratio_range) == 2
+        ), 'aspect_ratio_range must be a tuple of size 2.'
+        self.aspect_ratio_range = aspect_ratio_range
 
-    def forward(self, tensor_img: Tensor) -> Tensor:
-        """
-        Args:
-            tensor_img (torch.Tensor): The input image tensor of shape [C, H, W].
-
-        Returns:
-            torch.Tensor: The squeezed image tensor.
-        """
-        assert isinstance(tensor_img, Tensor), 'input must be a tensor.'
-        assert tensor_img.dim() == 3, 'input must be a 3D tensor(grey-scale).'
-        C, H, W = tensor_img.shape
-        new_width = int(self.height * self.aspect_ratio)
-
-        # Resize the tensor to the desired height and computed width
-        resized_tensor = F.resize(tensor_img, (self.height, new_width), antialias=True)
-
-        # Randomly crop the tensor multiple times
-        crops = []
-        for _ in range(self.num_crops):
-            left = random.randint(0, new_width - self.height)
-            cropped_tensor = resized_tensor[:, : self.height, left : left + self.height]
-            crops.append(cropped_tensor)
-
-        return crops
+    def forward(self, img: Image) -> Image:
+        # Sample a random aspect ratio from the specified range
+        self.aspect_ratio = np.random.uniform(
+            self.aspect_ratio_range[0], self.aspect_ratio_range[1]
+        )
+        # Use the parent class's forward method to apply the squeezing
+        return super(RandomSqueezing, self).forward(img)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(height={self.height}, aspect_ratio={self.aspect_ratio})"
+        return f"{self.__class__.__name__}(height={self.height}, aspect_ratio_range={self.aspect_ratio_range})"
 
 
 class Shading(torch.nn.Module):
@@ -330,13 +340,20 @@ def pad_to_square(img: Image.Image) -> Any:
     return transforms.functional.pad(img, padding, 255, 'constant')
 
 
-def custom_collate_fn(batch):
+def collate_fn_multicrop(batch):
     images, labels = zip(*batch)
     # Flatten the list of image patches
     images = [img for sublist in images for img in sublist]
     # Repeat labels for each patch
     labels = [label for label in labels for _ in range(NUM_RANDOM_CROP)]
     return torch.stack(images), torch.tensor(labels)
+
+
+def collate_fn_PIL(
+    batch: List[Tuple[Image.Image, int]]
+) -> Tuple[List[Image.Image], Tensor]:
+    images, labels = zip(*batch)
+    return list(images), torch.tensor(labels)
 
 
 TRANSFORMS_PAD = transforms.Compose(
@@ -362,13 +379,19 @@ TRANSFORMS_CROP = transforms.Compose(
 )
 
 TRANSFORMS_EVAL = transforms.Compose(
-    # more transform will implemented in trainer.eval()
+    # due to performance issue, we don't use 3x5 patches for evaluation.
+    # 3 different squeeze ratio and 5 different random crop.
+    # we use 1 squeeze ratio and 1 random crop for evaluation.
     [
         transforms.Grayscale(),
+        FixedHeightResize(INPUT_SIZE),
+        RandomSqueezing(INPUT_SIZE, EVAL_SQUEEZE_RATIO_RANGE),
+        transforms.RandomCrop(INPUT_SIZE),
+        transforms.ToTensor(),
     ]
 )
 
-TRANSFORMS_TRAIN = transforms.Compose(
+TRANSFORMS_TRAIN_SUPERVISED = transforms.Compose(
     [
         transforms.Grayscale(),
         GaussianNoise(),
@@ -382,6 +405,24 @@ TRANSFORMS_TRAIN = transforms.Compose(
     ]
 )
 
+TRANSFORMS_TRAIN_PREAUG = transforms.Compose(
+    # apply when training data is augmented and store in hdf5 file.
+    [
+        # see utils.augment_hdf5_preprocess()
+        transforms.ToTensor(),
+    ]
+)
+
+TRANSFORMS_TRAIN_UNSUPERVISED = transforms.Compose(
+    [
+        transforms.Grayscale(),
+        FixedHeightResize(INPUT_SIZE),
+        # Squeezing(INPUT_SIZE, SQUEEZE_RATIO),
+        transforms.RandomCrop(INPUT_SIZE),
+        transforms.ToTensor(),
+    ]
+)
+
 AUGMENTATION_LIST = [
     GaussianNoise(),
     transforms.GaussianBlur(3, sigma=(2.5, 3.5)),
@@ -390,3 +431,11 @@ AUGMENTATION_LIST = [
     VariableAspectRatio(INPUT_SIZE),
 ]
 
+TRANSFORMS_STORE = {
+    'preaug': TRANSFORMS_TRAIN_PREAUG,
+    'train_supervised': TRANSFORMS_TRAIN_SUPERVISED,
+    'train_unsupervised': TRANSFORMS_TRAIN_UNSUPERVISED,
+    'eval': TRANSFORMS_EVAL,
+    'crop': TRANSFORMS_CROP,
+    'pad': TRANSFORMS_PAD,
+}

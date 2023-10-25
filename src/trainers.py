@@ -144,8 +144,8 @@ class SupervisedTrainer(Trainer):
     def _train(self, epochs: int):
         best_acc = 0.0
         for epoch in range(epochs):
-            self._train_epoch(epoch)
-            test_loss, test_acc, class_acc_dic = self._evaluate(epoch)
+            # self._train_epoch(epoch)
+            test_loss, test_acc, class_acc_dic = self._evaluate()
             self._writer.add_scalar('Test Accuracy', test_acc, epoch)
             self._writer.add_scalar('Test Loss', test_loss, epoch)
             # self._writer.add_histogram(
@@ -203,44 +203,33 @@ class SupervisedTrainer(Trainer):
             pbar = tqdm(enumerate(self._eval_loader), total=len(self._eval_loader))
             
             for idx, (images, labels) in pbar:
-                labels = labels.to(self._device)
-                batch_size = labels.size(0)
-                
-                for b in range(batch_size):
-                    image = images[b]
-                    label = labels[b]
-                    
-                    # Process the image and get list of tensors
-                    patches = self._eval_preprocess(image)
-                    
-                    all_outputs = []
-                    for patch in patches:
-                        patch = rearrange(patch, 'c h w -> 1 c h w').to(self._device)
-                        output = self._model(patch)
-                        all_outputs.append(output)
-                
-                    # Average the outputs
-                    avg_output = torch.mean(torch.stack(all_outputs), dim=0)
-                    
-                    loss = self._criterion(avg_output, label)
-                    predicted_label = avg_output.argmax(dim=1)
+                images, labels = images.to(self._device), labels.to(self._device)
+                outputs = self._model(images)
+                loss = self._criterion(outputs, labels)
+                predicted_labels = outputs.argmax(dim=1)
+                total_loss += loss.item()
 
-                    total_loss += loss.item()
-                    correct_counts[label.item()] += (predicted_label == label).sum().item()
-                    total_counts[label.item()] += 1
+                for label in labels.unique():
+                    correct_counts[label.item()] += (
+                        (predicted_labels[labels == label] == label).sum().item()
+                    )
+                    total_counts[label.item()] += (labels == label).sum().item()
 
-                    accuracy = (predicted_label == label).float().mean()
-                    total_accuracy.append(accuracy.item())
+                accuracy = (predicted_labels == labels).float().mean()
+                total_accuracy.append(accuracy.item())
 
-            avg_loss = total_loss / len(self._eval_loader)
-            avg_accuracy = np.mean(total_accuracy)
-            class_accuracies = {
-                label: correct_counts[label] / total_counts[label] for label in total_counts
-            }
+                # Log the evaluation loss to TensorBoard
+                # self.writer.add_scalar('Evaluation Loss', loss.item(), epoch * len(eval_loader) + idx)
+
+        avg_loss = total_loss / len(self._eval_loader)
+        avg_accuracy = np.mean(total_accuracy)
+        class_accuracies = {
+            label: correct_counts[label] / total_counts[label] for label in total_counts
+        }
         
         return avg_loss, avg_accuracy, class_accuracies
 
-    def _eval_preprocess(image: Image.Image) -> List[torch.Tensor]:
+    def _eval_preprocess(self,image: Image.Image) -> List[torch.Tensor]:
         """ Process a single PIL image and return a list of tensors. """
         ratios = np.random.uniform(SQUEEZE_RATIO_RANGE[0], SQUEEZE_RATIO_RANGE[1], RATIO_SAMPLES)
         all_tensors = []
@@ -259,6 +248,7 @@ class SupervisedTrainer(Trainer):
                 all_tensors.append(patch)
 
         return all_tensors
+    
     def _save_weights(self, epoch: int):
         os.makedirs(self._save_path, exist_ok=True)
         path = os.path.join(self._save_path, f'{self._model_name}_weights_{epoch}.pth')

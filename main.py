@@ -1,14 +1,12 @@
-import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
-from src.datasets import TransformWrapper
-from src.preprocess import TRANSFORMS_EVAL, TRANSFORMS_TRAIN, custom_collate_fn
+from torch.utils.data import DataLoader
 import hydra
 from omegaconf import DictConfig
 from hydra.core.config_store import ConfigStore
 from src.config import TrainConfig
 from hydra.utils import instantiate
 import logging
+from src.preprocess import TRANSFORMS_STORE,collate_fn_PIL
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +17,11 @@ cs.store(group="training", name="base_training_default", node=TrainConfig)
 # need to set hydra.job.chdir=True first for version 1.2
 @hydra.main(config_path="config", config_name="main", version_base='1.2')
 def main(cfg: DictConfig) -> None:
-    ## Dataset ##
-    vfr_dataset = instantiate(cfg.dataset)
     if cfg.model == 'scae':
-        vfr_dataset.transform = TRANSFORMS_TRAIN
+        cfg.dataset.hdf5_file_path = cfg.dataset.train_hdf5_file_path
+        unsupervised_train_dataset = instantiate(cfg.dataset)(TRANSFORMS_STORE[cfg.dataset.transforms])
         train_loader = DataLoader(
-            vfr_dataset,
+            unsupervised_train_dataset,
             batch_size=cfg.training.batch_size,
             shuffle=True,
             num_workers=cfg.training.num_workers,
@@ -34,17 +31,12 @@ def main(cfg: DictConfig) -> None:
         )
         eval_loader = None
     else:
-        train_size = int(0.9 * len(vfr_dataset))
-        eval_size = len(vfr_dataset) - train_size
-        supervised_train_dataset_, supervised_eval_dataset_ = random_split(
-            vfr_dataset, [train_size, eval_size], torch.Generator().manual_seed(42)
-        )
-        supervised_train_dataset = TransformWrapper(
-            supervised_train_dataset_, TRANSFORMS_TRAIN
-        )
-        supervised_eval_dataset = TransformWrapper(
-            supervised_eval_dataset_, TRANSFORMS_EVAL
-        )
+        cfg.dataset.hdf5_file_path = cfg.train_hdf5_file_path
+        supervised_train_dataset = instantiate(cfg.dataset)
+        supervised_train_dataset.transform = TRANSFORMS_STORE[cfg.transforms]
+        cfg.dataset.hdf5_file_path = cfg.eval_hdf5_file_path
+        supervised_eval_dataset = instantiate(cfg.dataset)
+        supervised_eval_dataset.transform = TRANSFORMS_STORE['eval']
         train_loader = DataLoader(
             supervised_train_dataset,
             batch_size=cfg.training.batch_size,
