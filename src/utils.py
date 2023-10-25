@@ -173,31 +173,63 @@ def augment_hdf5_preprocess(
                     with io.BytesIO() as buffer:
                         augmented_image.save(buffer, format="PNG")
                         img_byte_array = buffer.getvalue()
-                    augmented_images_byte.append(np.frombuffer(img_byte_array, dtype='uint8'))
+                    augmented_images_byte.append(
+                        np.frombuffer(img_byte_array, dtype='uint8')
+                    )
                     augmented_labels_byte.append(label)
 
-            # extend the dataset   
+            # extend the dataset
             dset_images.resize(global_idx + len(augmented_images_byte), axis=0)
             dset_labels.resize(global_idx + len(augmented_labels_byte), axis=0)
 
             # batch write the data to HDF5 file
-            dset_images[global_idx:global_idx + len(augmented_images_byte)] = augmented_images_byte
-            dset_labels[global_idx:global_idx + len(augmented_labels_byte)] = augmented_labels_byte
+            dset_images[
+                global_idx : global_idx + len(augmented_images_byte)
+            ] = augmented_images_byte
+            dset_labels[
+                global_idx : global_idx + len(augmented_labels_byte)
+            ] = augmented_labels_byte
 
             global_idx += len(augmented_images_byte)
 
 
-# root_dir = '/public/dataset/AdobeVFR/Raw Image/VFR_syn_train'
-# hdf5_file_path = '/public/dataset/AdobeVFR/hdf5/VFR_syn_train_bk.hdf5'
-# images_to_hdf5(root_dir, hdf5_file_path)
+def add_images_to_hdf5(hdf5_path: str, dir_list: List[str]) -> None:
+    img_dtype = h5py.vlen_dtype(np.dtype('uint8'))
+    grayscale_transform = transforms.Grayscale()
 
-# dir_list = [
-#     '/public/dataset/AdobeVFR/Raw Image/VFR_real_u/scrape-wtf-new',
-#     '/public/dataset/AdobeVFR/Raw Image/VFR_syn_train'
-# ]
-# hdf5_file_path = '/public/dataset/AdobeVFR/hdf5/VFR_syn_real_align_bk.hdf5'
-# align_images_to_hdf5(dir_list, hdf5_file_path)
+    with h5py.File(hdf5_path, 'a') as hdf5_file:
+        if 'images' not in hdf5_file:
+            dset_images = hdf5_file.create_dataset(
+                'images',
+                shape=(0,),
+                maxshape=(None,),
+                dtype=img_dtype,
+            )
+        else:
+            dset_images = hdf5_file['images']
 
-# root_dir = '/public/dataset/AdobeVFR/Raw Image/VFR_real_test_fromzip'
-# hdf5_file_path = '/public/dataset/AdobeVFR/hdf5/VFR_real_test_bk.hdf5'
-# syn_images_to_hdf5(root_dir, hdf5_file_path)
+        global_idx = dset_images.shape[0]
+
+        for entry in tqdm(os.listdir(dir_list), desc="Directory Loop", leave=False):
+            if entry.endswith(('.png', '.jpeg')):
+                img_path = os.path.join(dir_list, entry)
+                with Image.open(img_path) as pil_img:
+                    pil_img = grayscale_transform(pil_img)  # Apply Grayscale
+                    with io.BytesIO() as buffer:
+                        pil_img.save(buffer, format="PNG")
+                        img_byte_array = buffer.getvalue()
+                    dset_images.resize(global_idx + 1, axis=0)
+                    dset_images[global_idx] = np.frombuffer(
+                        img_byte_array, dtype='uint8'
+                    )
+                    global_idx += 1
+
+
+def shuffle_images_in_hdf5(hdf5_path: str) -> None:
+    with h5py.File(hdf5_path, 'a') as hdf5_file:
+        dset_images = hdf5_file['images']
+
+        # Shuffle the images
+        shuffled_indices = np.arange(dset_images.shape[0])
+        np.random.shuffle(shuffled_indices)
+        dset_images[...] = dset_images[shuffled_indices]

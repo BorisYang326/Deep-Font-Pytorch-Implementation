@@ -1,5 +1,5 @@
 import torch
-from src.preprocess import TRANSFORMS_EVAL, TRANSFORMS_TRAIN,AUGMENTATION_LIST,Squeezing
+from src.preprocess import Squeezing
 from PIL import Image
 import os
 import torch.nn.functional as F
@@ -12,8 +12,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torchvision import transforms
 from einops import rearrange
-from src.utils import augment_hdf5_preprocess
-from src.config import SQUEEZE_RATIO_RANGE,RATIO_SAMPLES,PATCH_SAMPLES,INPUT_SIZE
+from src.utils import add_images_to_hdf5, shuffle_images_in_hdf5
+from src.config import SQUEEZE_RATIO_RANGE, RATIO_SAMPLES, PATCH_SAMPLES, INPUT_SIZE
+
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -61,7 +62,9 @@ def get_model(
     return model
 
 
-def get_font_name(output: Tensor, font_books: List[str], gt_font_name: str,top_K:int=5):
+def get_font_name(
+    output: Tensor, font_books: List[str], gt_font_name: str, top_K: int = 5
+):
     topk_values, topk_indices = torch.topk(output, dim=1, k=top_K)
     topk_indices_list = topk_indices.squeeze().tolist()
     topk_values_list = topk_values.squeeze().cpu().numpy()
@@ -117,43 +120,53 @@ def main():
             model.eval()
             gt_font_name = image_path.split('/')[-1].split('.')[0].split('_')[0]
             image = Image.open(image_path)
-            
+
             # Sample ratios
-            ratios = np.random.uniform(SQUEEZE_RATIO_RANGE[0], SQUEEZE_RATIO_RANGE[1], RATIO_SAMPLES)
-            
+            ratios = np.random.uniform(
+                SQUEEZE_RATIO_RANGE[0], SQUEEZE_RATIO_RANGE[1], RATIO_SAMPLES
+            )
+
             all_outputs = []
             for ratio in ratios:
                 squeezing_transform = Squeezing(INPUT_SIZE, ratio)
-                
+
                 # Apply squeezing and then sample patches
                 squeezed_image = squeezing_transform(image)
-                
+
                 for _ in range(PATCH_SAMPLES):
-                    patch_transform = transforms.Compose([
-                        transforms.RandomCrop(INPUT_SIZE),
-                        transforms.Grayscale(),
-                        transforms.ToTensor()
-                    ])
-                    
+                    patch_transform = transforms.Compose(
+                        [
+                            transforms.RandomCrop(INPUT_SIZE),
+                            transforms.Grayscale(),
+                            transforms.ToTensor(),
+                        ]
+                    )
+
                     patch = patch_transform(squeezed_image)
                     patch = rearrange(patch, 'c h w -> 1 c h w').to(DEVICE)
-                    
+
                     output = model(patch)
                     all_outputs.append(output)
-            
+
             # Average the outputs
             avg_output = torch.mean(torch.stack(all_outputs), dim=0)
             avg_softmax_output = F.softmax(avg_output, dim=1)
-            
+
             # Your original processing for the output
-            font_name_list, font_scores_list, hit_flag = get_font_name(avg_softmax_output, font_books, gt_font_name)
-            
+            font_name_list, font_scores_list, hit_flag = get_font_name(
+                avg_softmax_output, font_books, gt_font_name
+            )
+
             print(
                 "Test image {:d}/{:d}: {:s} -> [{:s}]".format(
                     k + 1, len(image_list), image_path, str(hit_flag)
                 )
             )
-            print('Predicted label: {:d}'.format(torch.argmax(avg_softmax_output, dim=1).item()))
+            print(
+                'Predicted label: {:d}'.format(
+                    torch.argmax(avg_softmax_output, dim=1).item()
+                )
+            )
             for font, score in zip(font_name_list, font_scores_list):
                 print(f"Font: {font}, Score: {score}")
                 print('-----------------------------------------------')
@@ -163,5 +176,13 @@ if __name__ == '__main__':
     # pkl_path = './multirun/2023-10-21/23-19-37/0/saved_models/class_accuracy.pkl'
     # pkl_path = './outputs/2023-10-21/16-32-10/saved_models/class_accuracy.pkl'
     # draw_class_acc(pkl_path)
-    # augment_hdf5_preprocess('/public/dataset/AdobeVFR/hdf5/VFR_syn_train.hdf5', AUGMENTATION_LIST, '/public/dataset/AdobeVFR/hdf5/VFR_syn_train_aug_bk.hdf5',4096)
-    main()
+    syn_aug_hdf5_path = '/public/dataset/AdobeVFR/hdf5/VFR_syn_train_aug.hdf5'
+    align_aug_hdf5_path = '/public/dataset/AdobeVFR/hdf5/VFR_align_train_aug_bk.hdf5'
+    # augment_hdf5_preprocess('/public/dataset/AdobeVFR/hdf5/VFR_syn_train_bk.hdf5', AUGMENTATION_LIST, syn_aug_hdf5_path,4096)
+    # shutil.copy2(syn_aug_hdf5_path, align_aug_hdf5_path)
+    add_images_to_hdf5(
+        align_aug_hdf5_path,
+        '/public/dataset/AdobeVFR/Raw Image/VFR_real_u/scrape-wtf-new/',
+    )
+    shuffle_images_in_hdf5(align_aug_hdf5_path)
+    # main()
