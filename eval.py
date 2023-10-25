@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torchvision import transforms
 from einops import rearrange
-from src.utils import augment_hdf5_preprocess
+from src.utils import augment_hdf5_preprocess,split_and_augment_hdf5
 from src.config import SQUEEZE_RATIO_RANGE,RATIO_SAMPLES,PATCH_SAMPLES,INPUT_SIZE
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

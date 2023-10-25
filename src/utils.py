@@ -173,18 +173,128 @@ def augment_hdf5_preprocess(
                     with io.BytesIO() as buffer:
                         augmented_image.save(buffer, format="PNG")
                         img_byte_array = buffer.getvalue()
-                    augmented_images_byte.append(np.frombuffer(img_byte_array, dtype='uint8'))
+                    augmented_images_byte.append(
+                        np.frombuffer(img_byte_array, dtype='uint8')
+                    )
                     augmented_labels_byte.append(label)
 
-            # extend the dataset   
+            # extend the dataset
             dset_images.resize(global_idx + len(augmented_images_byte), axis=0)
             dset_labels.resize(global_idx + len(augmented_labels_byte), axis=0)
 
             # batch write the data to HDF5 file
-            dset_images[global_idx:global_idx + len(augmented_images_byte)] = augmented_images_byte
-            dset_labels[global_idx:global_idx + len(augmented_labels_byte)] = augmented_labels_byte
+            dset_images[
+                global_idx : global_idx + len(augmented_images_byte)
+            ] = augmented_images_byte
+            dset_labels[
+                global_idx : global_idx + len(augmented_labels_byte)
+            ] = augmented_labels_byte
 
             global_idx += len(augmented_images_byte)
+
+
+def split_hdf5(
+    input_hdf5_path: str,
+    train_hdf5_path: str,
+    test_hdf5_path: str,
+    split_ratio: float = 0.9,
+):
+    """Split the input HDF5 file into train and test HDF5 files.
+
+    Args:
+        input_hdf5_path (str): origin HDF5 file path
+        train_hdf5_path (str): train HDF5 file path
+        test_hdf5_path (str): test HDF5 file path
+        split_ratio (float, optional): split ratio. Defaults to 0.9.
+    """
+    with h5py.File(input_hdf5_path, 'r') as f:
+        images = f['images'][:]
+        labels = f['labels'][:]
+
+    # Shuffle the data
+    indices = np.arange(len(images))
+    np.random.shuffle(indices)
+
+    # Split indices
+    split_idx = int(len(indices) * split_ratio)
+    train_indices = indices[:split_idx]
+    test_indices = indices[split_idx:]
+
+    # Extract train and test data
+    train_images = images[train_indices]
+    train_labels = labels[train_indices]
+
+    test_images = images[test_indices]
+    test_labels = labels[test_indices]
+
+    # Write train data to new HDF5 file
+    with h5py.File(train_hdf5_path, 'w') as f:
+        f.create_dataset('images', data=train_images)
+        f.create_dataset('labels', data=train_labels)
+
+    # Write test data to new HDF5 file
+    with h5py.File(test_hdf5_path, 'w') as f:
+        f.create_dataset('images', data=test_images)
+        f.create_dataset('labels', data=test_labels)
+
+
+def split_and_augment_hdf5(
+    origin_hdf5_path: str,
+    origin_aug_hdf5_path: str,
+    new_train_hdf5_path: str,
+    new_test_hdf5_path: str,
+    split_ratio: float = 0.9,
+)->None:
+    """Split the origin HDF5 file into train and test HDF5 files,
+    and split the augmented train HDF5 file into new train HDF5 files.
+    Finally, the train data will be augmented and the test data will be the same as origin HDF5 file.
+
+    Args:
+        origin_hdf5_path (str): origin HDF5 file path
+        origin_aug_hdf5_path (str): origin augmented HDF5 file path
+        new_train_hdf5_path (str): splitted and augmented train HDF5 file path
+        new_test_hdf5_path (str): splitted test HDF5 file path
+        split_ratio (float, optional): split ratio. Defaults to 0.9.
+    """
+    # Determine the split index
+    with h5py.File(origin_hdf5_path, 'r') as f:
+        total_images = len(f['images'])
+    split_idx = int(total_images * split_ratio)
+
+    # Extract training data from train_aug_hdf5
+    with h5py.File(origin_aug_hdf5_path, 'r') as f:
+        #  Each image in current augmented dataset is augmented 3 times
+        augmented_train_images = f['images'][
+            : split_idx * 3
+        ]  # Assuming each image is augmented 3 times
+        augmented_train_labels = f['labels'][: split_idx * 3]
+
+    # Shuffle the train data
+    train_indices = np.arange(len(augmented_train_images))
+    np.random.shuffle(train_indices)
+    augmented_train_images = augmented_train_images[train_indices]
+    augmented_train_labels = augmented_train_labels[train_indices]
+
+    # Write augmented training data to new_train_hdf5
+    with h5py.File(new_train_hdf5_path, 'w') as f:
+        f.create_dataset('images', data=augmented_train_images)
+        f.create_dataset('labels', data=augmented_train_labels)
+
+    # Extract test data from origin_hdf5
+    with h5py.File(origin_hdf5_path, 'r') as f:
+        test_images = f['images'][split_idx:]
+        test_labels = f['labels'][split_idx:]
+
+    # Shuffle the test data
+    test_indices = np.arange(len(test_images))
+    np.random.shuffle(test_indices)
+    test_images = test_images[test_indices]
+    test_labels = test_labels[test_indices]
+
+    # Write test data to new_test_hdf5
+    with h5py.File(new_test_hdf5_path, 'w') as f:
+        f.create_dataset('images', data=test_images)
+        f.create_dataset('labels', data=test_labels)
 
 
 # root_dir = '/public/dataset/AdobeVFR/Raw Image/VFR_syn_train'
