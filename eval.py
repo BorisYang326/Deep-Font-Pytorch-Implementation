@@ -1,6 +1,6 @@
 import torch
 from src.preprocess import Squeezing
-from PIL import Image
+from PIL import Image,ImageFile
 import os
 import torch.nn.functional as F
 import argparse
@@ -13,8 +13,11 @@ import numpy as np
 from torchvision import transforms
 from einops import rearrange
 from src.config import SQUEEZE_RATIO_RANGE, RATIO_SAMPLES, PATCH_SAMPLES, INPUT_SIZE
-from src.utils import split_and_augment_hdf5,pre_aug_eval_hdf5_preprocess
-from src.preprocess import TRANSFORMS_EVAL
+from src.utils import split_and_augment_hdf5,pre_aug_eval_hdf5_preprocess,add_images_to_hdf5
+from src.preprocess import TRANSFORMS_EVAL,TRANSFORMS_TRAIN_UNSUPERVISED
+import h5py
+import random
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -177,10 +180,10 @@ if __name__ == '__main__':
     # pkl_path = './multirun/2023-10-21/23-19-37/0/saved_models/class_accuracy.pkl'
     # pkl_path = './outputs/2023-10-21/16-32-10/saved_models/class_accuracy.pkl'
     # draw_class_acc(pkl_path)
-    syn_origin_hdf5_path = '/public/dataset/AdobeVFR/hdf5/syn/VFR_syn_train_bk.hdf5'
-    syn_aug_hdf5_path = '/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_aug_bk.hdf5'
+    # syn_origin_hdf5_path = '/public/dataset/AdobeVFR/hdf5/syn/VFR_syn_train_bk.hdf5'
+    syn_aug_hdf5_path = '/home/yangbo/cache_dataset/AdobeVFR/hdf5/aug/VFR_syn_train_aug.hdf5'
 
-    # align_aug_hdf5_path = '/public/dataset/AdobeVFR/hdf5/VFR_align_train_aug_bk.hdf5'
+    align_aug_hdf5_path = '/home/yangbo/cache_dataset/AdobeVFR/hdf5/aug/VFR_align_train_aug_bk.hdf5'
     # augment_hdf5_preprocess('/public/dataset/AdobeVFR/hdf5/VFR_syn_train_bk.hdf5', AUGMENTATION_LIST, syn_aug_hdf5_path,4096)
     # shutil.copy2(syn_aug_hdf5_path, align_aug_hdf5_path)
     # add_images_to_hdf5(
@@ -188,7 +191,21 @@ if __name__ == '__main__':
     #     '/public/dataset/AdobeVFR/Raw Image/VFR_real_u/scrape-wtf-new/',
     #     TRANSFORMS_TRAIN_UNSUPERVISED
     # )
-    split_and_augment_hdf5(syn_origin_hdf5_path, syn_aug_hdf5_path,'/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_train_aug.hdf5','/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_eval_aug.hdf5',0.9)
     # extract_random_images_from_hdf5('/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_eval_aug.hdf5','./test_images/syn/test/',10)
     # main()
+    # with h5py.File('/home/yangbo/cache_dataset/AdobeVFR/hdf5/aug/VFR_align_train_aug_bk.hdf5', 'r') as f1, h5py.File('/home/yangbo/cache_dataset/AdobeVFR/hdf5/aug/VFR_syn_train_aug.hdf5', 'r') as f2:
+    #     # 读取两个文件中的图像
+    #     images1 = list(f1['images'])
+    #     images2 = list(f2['images'])
+
+    #     # 合并图像
+    #     all_images = images1 + images2
+
+    #     # 打乱图像
+    #     random.shuffle(all_images)
+
+    #     # 写入到新的HDF5文件中
+    #     with h5py.File('/home/yangbo/cache_dataset/AdobeVFR/hdf5/aug/VFR_align_train_aug.hdf5', 'w') as fout:
+    #         img_dtype = h5py.vlen_dtype(np.dtype('uint8'))
+    #         fout.create_dataset('images', data=all_images, dtype=img_dtype)
     

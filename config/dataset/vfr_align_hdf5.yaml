@@ -1,3 +1,2 @@
-_target_: src.datasets.VFRRealDataset
-_partial_: true
-root_dir: /public/dataset/AdobeVFR/hdf5/VFR_syn_real_align_bk.hdf5
+_target_: src.datasets.VFRAlignHDF5Dataset
+hdf5_file_path: /home/yangbo/cache_dataset/AdobeVFR/hdf5/aug/VFR_align_train_aug.hdf5

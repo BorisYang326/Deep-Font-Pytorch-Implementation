@@ -34,7 +34,10 @@ class FixedHeightResize(nn.Module):
         w, h = pil_image.size
         aspect_ratio = np.divide(float(h), float(w))
         new_w = np.ceil(np.divide(self.size, aspect_ratio)).astype(int)
-        return F.resize(pil_image, (self.size, new_w))
+        if new_w < self.size:
+            return F.resize(pil_image, (self.size, self.size))
+        else:
+            return F.resize(pil_image, (self.size, new_w))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(size={self.size})"
@@ -419,7 +422,7 @@ TRANSFORMS_TRAIN_UNSUPERVISED = transforms.Compose(
         FixedHeightResize(INPUT_SIZE),
         # Squeezing(INPUT_SIZE, SQUEEZE_RATIO),
         transforms.RandomCrop(INPUT_SIZE),
-        transforms.ToTensor(),
+        # transforms.ToTensor(),
     ]
 )
 

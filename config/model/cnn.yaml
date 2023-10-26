@@ -3,3 +3,4 @@ _partial_: true
 # encoder_weight_path: ${hydra:launcher.cwd}/weights/SCAE/scae_weights.pth
 encoder_weight_path: ${hydra:runtime.cwd}/weights/SCAE/scae_weights.pth
 finetune_ratio : 0.0
+num_classes: ${training.num_classes}

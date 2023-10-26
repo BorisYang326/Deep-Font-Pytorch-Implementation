@@ -49,9 +49,7 @@ class Trainer:
         raise NotImplementedError
 
     def _save_weights(self):
-        os.makedirs(self._save_path, exist_ok=True)
-        torch.save(self._model.state_dict(), self._save_path)
-        print("Saved model weights at {}".format(self._save_path))
+        raise NotImplementedError
 
     # @property
     # def model(self) -> nn.Module:
@@ -92,6 +90,7 @@ class SCAETrainer(Trainer):
             save_path,
             log_dir,
         )
+        self._model_name = model.name
 
     def _train(self, epochs: int):
         for epoch in range(epochs):
@@ -109,8 +108,15 @@ class SCAETrainer(Trainer):
                 loss.backward()
                 self._optimizer.step()
                 loss_.append(loss.item())
+            self._save_weights(epoch)
 
-            print(f"Epoch [{epoch+1}/{epochs}], Loss: {np.mean(loss_):.4f}")
+            logger.info(f"Epoch [{epoch+1}/{epochs}], Loss: {np.mean(loss_):.4f}")
+
+    def _save_weights(self, epoch: int):
+        os.makedirs(self._save_path, exist_ok=True)
+        path = os.path.join(self._save_path, f'{self._model_name}_weights_{epoch}.pth')
+        torch.save(self._model.state_dict(), path)
+        logger.info("Saved model weights at {}".format(path))
 
 
 class SupervisedTrainer(Trainer):
@@ -155,8 +161,8 @@ class SupervisedTrainer(Trainer):
             #     torch.tensor(list(class_acc_dic.values())).view(2383, 1),
             #     epoch,
             # )
-            print(f"Test accuracy: {test_acc:.4f} at epoch {epoch+1}.")
-            print(f"Test loss: {test_loss:.4f} at epoch {epoch+1}.")
+            logger.info(f"Test accuracy: {test_acc:.4f} at epoch {epoch+1}.")
+            logger.info(f"Test loss: {test_loss:.4f} at epoch {epoch+1}.")
             if test_acc > best_acc:
                 self._save_weights(epoch)
                 # save class accuracy
@@ -254,4 +260,4 @@ class SupervisedTrainer(Trainer):
         os.makedirs(self._save_path, exist_ok=True)
         path = os.path.join(self._save_path, f'{self._model_name}_weights_{epoch}.pth')
         torch.save(self._model.state_dict(), path)
-        print("Saved model weights at {}".format(path))
+        logger.info("Saved model weights at {}".format(path))

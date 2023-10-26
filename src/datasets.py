@@ -1,6 +1,6 @@
 import os
 from torch.utils.data import Dataset,Subset
-from PIL import Image
+from PIL import Image,ImageFile
 import random
 from abc import ABC, abstractmethod
 import torchvision.transforms as transforms
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 #         # Store the label as an attribute of the dataset
 #         dset.attrs['label'] = label
 ROOT_CACHE_DIR = os.path.join(os.path.dirname(__file__), '..', 'result')
-
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 class AdobeVFRAbstractDataset(Dataset, ABC):
     def __init__(self, root_dir: str, transform: Optional[transforms.Compose] = None):
@@ -75,12 +75,17 @@ class VFRAlignHDF5Dataset(Dataset):
         # self._images = self.hf['images']
         # self._labels = self.hf['labels']
         self._hdf5_file_path = hdf5_file_path
-        self.transform = transform
+        self._transform = transform
         with h5py.File(self._hdf5_file_path, 'r') as f:
             self._length = len(f['images'])
     
-    def _set_transform(self, transform: transforms.Compose):
-        self.transform = transform
+    @property
+    def transform(self):
+        return self._transform
+    
+    @transform.setter
+    def transform(self, transform: transforms.Compose):
+        self._transform = transform
     
     def _open_hdf5(self):
         self.hf = h5py.File(self._hdf5_file_path, 'r')
@@ -88,20 +93,6 @@ class VFRAlignHDF5Dataset(Dataset):
             self._images = self.hf['images']
         except Exception:
             raise Exception(f"Error loading images from {self._hdf5_file_path}")
-        try:
-            self._labels = self.hf['labels']
-        except Exception:
-            raise Exception(f"Error loading labels from {self._hdf5_file_path}")
-        assert len(self._images) == len(
-            self._labels
-        ), 'images and labels have different length.'
-        if self._num_classes is not None:
-            pass
-        else:
-            # check for full dataset.
-            assert (
-                len(self._labels) == self._length
-            ), 'hd5f file did not contain all the data of VFR_syn dataset.'
 
     def __len__(self) -> int:
         return self._length
@@ -110,12 +101,22 @@ class VFRAlignHDF5Dataset(Dataset):
         if not hasattr(self, 'hf'):
             self._open_hdf5()
         assert hasattr(self, '_images'), 'images not found in hdf5 file.'
-        image_byte_array = self._images[idx]
-        image = Image.open(io.BytesIO(image_byte_array))
 
-        if self.transform:
-            image = self.transform(image)
-        return image
+        max_attempts = 5
+        attempts = 0
+        while attempts < max_attempts:
+            image_byte_array = self._images[idx]
+            try:
+                image = Image.open(io.BytesIO(image_byte_array))
+                if self._transform:
+                    image = self._transform(image)
+                return image
+            except Exception:
+                idx = (idx + 1) % len(self)  # Try the next image
+                attempts += 1
+
+        raise ValueError(f"Failed to load an image after {max_attempts} attempts.")
+        
 
 
 class VFRSynDataset(AdobeVFRAbstractDataset):

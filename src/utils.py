@@ -329,18 +329,21 @@ def add_images_to_hdf5(
         global_idx = dset_images.shape[0]
 
         for entry in tqdm(os.listdir(dir_list), desc="Directory Loop", leave=False):
-            if entry.endswith(('.png', '.jpeg')):
+            if entry.endswith(('.png', '.jpeg','.jpg')):
                 img_path = os.path.join(dir_list, entry)
-                with Image.open(img_path) as pil_img:
-                    pil_img = preprocess(pil_img)  # Apply Custom Preprocessing
-                    with io.BytesIO() as buffer:
-                        pil_img.save(buffer, format="PNG")
-                        img_byte_array = buffer.getvalue()
-                    dset_images.resize(global_idx + 1, axis=0)
-                    dset_images[global_idx] = np.frombuffer(
-                        img_byte_array, dtype='uint8'
-                    )
-                    global_idx += 1
+                try:
+                    with Image.open(img_path).convert('L') as pil_img:
+                        pil_img = preprocess(pil_img)  # Apply Custom Preprocessing
+                        with io.BytesIO() as buffer:
+                            pil_img.save(buffer, format="PNG")
+                            img_byte_array = buffer.getvalue()
+                        dset_images.resize(global_idx + 1, axis=0)
+                        dset_images[global_idx] = np.frombuffer(
+                            img_byte_array, dtype='uint8'
+                        )
+                        global_idx += 1
+                except Exception as e:
+                    print(f"Failed to process image: {img_path}. Error: {e}")
 
 
 def shuffle_images_in_hdf5(hdf5_path: str) -> None:
