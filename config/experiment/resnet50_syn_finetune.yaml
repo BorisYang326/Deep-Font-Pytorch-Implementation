@@ -6,7 +6,11 @@ defaults:
 
 model:
   finetune_ratio: 1e-3
-  pretrained_weight_path: ${hydra:runtime.cwd}/weights/Resnet-50/ResNet_weights_19.pth
+  pretrained_weight_path: ${hydra:runtime.cwd}/outputs/2023-10-25/23-51-22/saved_models/ResNet_weights_21.pth
 
 training:
   epochs: 100
+
+train_hdf5_file_path: /public/dataset/AdobeVFR/hdf5/real/VFR_real_label_train.hdf5
+eval_hdf5_file_path: /public/dataset/AdobeVFR/hdf5/real/VFR_real_label_eval.hdf5
+transforms: train_unsupervised

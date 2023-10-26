@@ -13,8 +13,8 @@ import numpy as np
 from torchvision import transforms
 from einops import rearrange
 from src.config import SQUEEZE_RATIO_RANGE, RATIO_SAMPLES, PATCH_SAMPLES, INPUT_SIZE
-from src.utils import split_and_augment_hdf5,pre_aug_eval_hdf5_preprocess
-from src.preprocess import TRANSFORMS_EVAL
+from src.preprocess import FixedHeightResize
+from src.utils import split_hdf5
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -97,13 +97,13 @@ def main():
     parser.add_argument(
         '--resent_weight_path',
         type=str,
-        default="./outputs/2023-10-22/21-13-49/saved_models/ResNet_weights_18.pth",
+        default="./outputs/2023-10-25/23-51-22/saved_models/ResNet_weights_10.pth",
     )
     parser.add_argument(
         '--font_book_path', type=str, default="/public/dataset/AdobeVFR/fontlist.txt"
     )
     parser.add_argument('--test_folder', type=str, default="./test_images/syn/train/")
-    parser.add_argument('--result_folder', type=str, default="./result/")
+    parser.add_argument('--result_folder', type=str, default="./result/eval/")
     args = parser.parse_args()
     if not os.path.isdir(args.result_folder):
         os.mkdir(args.result_folder)
@@ -129,12 +129,14 @@ def main():
 
             all_outputs = []
             for ratio in ratios:
-                squeezing_transform = Squeezing(INPUT_SIZE, ratio)
+                squeezing_transform = transforms.Compose(
+                    [FixedHeightResize(INPUT_SIZE), Squeezing(INPUT_SIZE, ratio)]
+                )
 
                 # Apply squeezing and then sample patches
                 squeezed_image = squeezing_transform(image)
 
-                for _ in range(PATCH_SAMPLES):
+                for idx in range(PATCH_SAMPLES):
                     patch_transform = transforms.Compose(
                         [
                             transforms.RandomCrop(INPUT_SIZE),
@@ -144,6 +146,13 @@ def main():
                     )
 
                     patch = patch_transform(squeezed_image)
+                    patch_pil = transforms.ToPILImage()(patch)
+                    # patch_pil.save(
+                    #     os.path.join(
+                    #         args.result_folder,
+                    #         f"{image_path.split('/')[-1].split('.')[0]}_{ratio:.2f}_{idx}_{k}.png",
+                    #     )
+                    # )
                     patch = rearrange(patch, 'c h w -> 1 c h w').to(DEVICE)
 
                     output = model(patch)
@@ -174,21 +183,5 @@ def main():
 
 
 if __name__ == '__main__':
-    # pkl_path = './multirun/2023-10-21/23-19-37/0/saved_models/class_accuracy.pkl'
-    # pkl_path = './outputs/2023-10-21/16-32-10/saved_models/class_accuracy.pkl'
-    # draw_class_acc(pkl_path)
-    syn_origin_hdf5_path = '/public/dataset/AdobeVFR/hdf5/syn/VFR_syn_train_bk.hdf5'
-    syn_aug_hdf5_path = '/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_aug_bk.hdf5'
-
-    # align_aug_hdf5_path = '/public/dataset/AdobeVFR/hdf5/VFR_align_train_aug_bk.hdf5'
-    # augment_hdf5_preprocess('/public/dataset/AdobeVFR/hdf5/VFR_syn_train_bk.hdf5', AUGMENTATION_LIST, syn_aug_hdf5_path,4096)
-    # shutil.copy2(syn_aug_hdf5_path, align_aug_hdf5_path)
-    # add_images_to_hdf5(
-    #     align_aug_hdf5_path,
-    #     '/public/dataset/AdobeVFR/Raw Image/VFR_real_u/scrape-wtf-new/',
-    #     TRANSFORMS_TRAIN_UNSUPERVISED
-    # )
-    split_and_augment_hdf5(syn_origin_hdf5_path, syn_aug_hdf5_path,'/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_train_aug.hdf5','/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_eval_aug.hdf5',0.9)
-    # extract_random_images_from_hdf5('/public/dataset/AdobeVFR/hdf5/aug/VFR_syn_eval_aug.hdf5','./test_images/syn/test/',10)
     # main()
-    
+    split_hdf5('/public/dataset/AdobeVFR/hdf5/real/VFR_real_label_full.hdf5','/public/dataset/AdobeVFR/hdf5/real/VFR_real_label_train.hdf5','/public/dataset/AdobeVFR/hdf5/real/VFR_real_label_eval.hdf5')
