@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - override /model: scae
+  - override /dataset: vfr_align_hdf5
+  - override /trainer: scae
+
+transforms: preaug
+
+training:
+  batch_size: 8192

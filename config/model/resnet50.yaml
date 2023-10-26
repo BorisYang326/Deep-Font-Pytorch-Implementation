@@ -3,3 +3,4 @@ _partial_: true
 backbone: resnet50
 pretrained_weight_path: null
 finetune_ratio: 1.0
+num_classes: ${training.num_classes}

@@ -1,6 +1,6 @@
 import torch
 from src.preprocess import Squeezing
-from PIL import Image
+from PIL import Image,ImageFile
 import os
 import torch.nn.functional as F
 import argparse

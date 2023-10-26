@@ -7,19 +7,22 @@ from src.config import TrainConfig
 from hydra.utils import instantiate
 import logging
 from src.preprocess import TRANSFORMS_STORE,collate_fn_PIL
+import torch
 
 logger = logging.getLogger(__name__)
 
 cs = ConfigStore.instance()
 cs.store(group="training", name="base_training_default", node=TrainConfig)
 
+torch.cuda.set_device(1)
 
 # need to set hydra.job.chdir=True first for version 1.2
 @hydra.main(config_path="config", config_name="main", version_base='1.2')
 def main(cfg: DictConfig) -> None:
-    if cfg.model == 'scae':
-        cfg.dataset.hdf5_file_path = cfg.dataset.train_hdf5_file_path
-        unsupervised_train_dataset = instantiate(cfg.dataset)(TRANSFORMS_STORE[cfg.dataset.transforms])
+    model_name = cfg.model._target_.split('.')[-1]
+    if model_name == 'SCAE':
+        unsupervised_train_dataset = instantiate(cfg.dataset)
+        unsupervised_train_dataset.transform = TRANSFORMS_STORE[cfg.transforms]
         train_loader = DataLoader(
             unsupervised_train_dataset,
             batch_size=cfg.training.batch_size,
@@ -30,7 +33,7 @@ def main(cfg: DictConfig) -> None:
             # collate_fn=custom_collate_fn,
         )
         eval_loader = None
-    else:
+    elif model_name in ['CNN', 'ResNet']:
         cfg.dataset.hdf5_file_path = cfg.train_hdf5_file_path
         supervised_train_dataset = instantiate(cfg.dataset)
         supervised_train_dataset.transform = TRANSFORMS_STORE[cfg.transforms]
@@ -53,12 +56,14 @@ def main(cfg: DictConfig) -> None:
             pin_memory=True,
             prefetch_factor=cfg.training.prefetch_factor,
         )
+    else:
+        raise NotImplementedError(f"Model {cfg.model} not implemented")
     ## Model ##
-    model = instantiate(cfg.model)(cfg.training.num_classes)
+    model = instantiate(cfg.model)
     optim_groups = model._optim_groups(cfg.training.lr)
     optimizer = instantiate(cfg.optimizer)(params=optim_groups)
     ## Trainer ##
-    criterion = nn.MSELoss() if cfg.model == 'scae' else nn.CrossEntropyLoss()
+    criterion = nn.MSELoss() if model_name == 'SCAE' else nn.CrossEntropyLoss()
     logger.info(f"Criterion: {criterion}")
     trainer = instantiate(cfg.trainer)(
         model=model,

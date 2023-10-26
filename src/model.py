@@ -66,6 +66,13 @@ class SCAE(nn.Module):
             # If it was parallelized, we need to remove the 'module.' prefix from keys
             state_dict = {k[7:]: v for k, v in state_dict.items()}
         self.load_state_dict(state_dict)
+    
+    @property
+    def name(self) -> str:
+        return 'SCAE'
+
+    def _optim_groups(self, lr: float) -> list:
+        return [{'params': self.parameters(), 'lr': lr}]
 
 
 class CNN(nn.Module):

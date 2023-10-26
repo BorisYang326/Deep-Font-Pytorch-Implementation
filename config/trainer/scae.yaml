@@ -3,6 +3,6 @@ _partial_: true
 model: ???
 optimizer: ???
 device: ${training.device}
-log_dir: ./logs
+log_dir: ./runs
 save_path: ./saved_models
 # eval_loader: null
