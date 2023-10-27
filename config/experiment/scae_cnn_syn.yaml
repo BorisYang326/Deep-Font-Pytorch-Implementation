@@ -2,6 +2,15 @@
 defaults:
   - override /model: cnn
 
+model:
+  encoder_weight_path: ${hydra:runtime.cwd}/outputs/2023-10-26/02-26-12/saved_models/SCAE_weights_19.pth
+  finetune_ratio: 0.0
+
 training:
-  epochs: 100
   batch_size: 8192
+  epochs: 100
+  lr: 1e-3
+
+train_hdf5_file_path: /home/yangbo/cache_dataset/AdobeVFR/hdf5/aug/VFR_syn_train_aug.hdf5
+eval_hdf5_file_path: /home/yangbo/cache_dataset/AdobeVFR/hdf5/aug/VFR_syn_eval_aug.hdf5
+transforms: preaug

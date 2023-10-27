@@ -7,14 +7,15 @@ from src.config import TrainConfig
 from hydra.utils import instantiate
 import logging
 from src.preprocess import TRANSFORMS_STORE,collate_fn_PIL
-import torch
+import os
 
 logger = logging.getLogger(__name__)
 
 cs = ConfigStore.instance()
 cs.store(group="training", name="base_training_default", node=TrainConfig)
 
-torch.cuda.set_device(1)
+# only for a single GPU
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 # need to set hydra.job.chdir=True first for version 1.2
 @hydra.main(config_path="config", config_name="main", version_base='1.2')

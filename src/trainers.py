@@ -41,6 +41,14 @@ class Trainer:
         self._save_path = save_path
         self._log_step = log_step
         self._writer = SummaryWriter(log_dir=log_dir)
+        self._model_name = model.name
+        if torch.cuda.is_available():
+            model = model.cuda()  
+
+        if torch.cuda.device_count() > 1:
+            self._model = nn.DataParallel(model)
+        else:
+            self._model = model
 
     def _train(self, epochs: int):
         raise NotImplementedError
@@ -90,7 +98,6 @@ class SCAETrainer(Trainer):
             save_path,
             log_dir,
         )
-        self._model_name = model.name
 
     def _train(self, epochs: int):
         for epoch in range(epochs):
@@ -143,11 +150,6 @@ class SupervisedTrainer(Trainer):
             log_dir,
             log_step,
         )
-        self._model_name = model.name
-        if torch.cuda.device_count() > 1:
-            self._model = nn.DataParallel(model)
-        else:
-            self._model = model
 
     def _train(self, epochs: int):
         best_acc = 0.0
