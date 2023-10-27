@@ -1,6 +1,7 @@
 # @package _global_
 defaults:
   - override /model: cnn
+  - override /scheduler: reduce_lr_on_plateau
 
 model:
   encoder_weight_path: ${hydra:runtime.cwd}/outputs/2023-10-26/02-26-12/saved_models/SCAE_weights_19.pth
@@ -9,7 +10,7 @@ model:
 training:
   batch_size: 8192
   epochs: 100
-  lr: 1e-3
+  lr: 5e-4
 
 train_hdf5_file_path: /home/yangbo/cache_dataset/AdobeVFR/hdf5/aug/VFR_syn_train_aug.hdf5
 eval_hdf5_file_path: /home/yangbo/cache_dataset/AdobeVFR/hdf5/aug/VFR_syn_eval_aug.hdf5

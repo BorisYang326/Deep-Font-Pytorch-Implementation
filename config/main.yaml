@@ -4,6 +4,7 @@ defaults:
   - dataset: vfr_syn_hdf5
   - model: resnet50
   - trainer: supervised
+  - scheduler: void
   - optimizer: adamw
   - _self_
   
