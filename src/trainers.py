@@ -165,10 +165,10 @@ class SupervisedTrainer(Trainer):
             test_loss, test_acc, class_acc_dic = self._evaluate()
             if isinstance(self._scheduler, ReduceLROnPlateau):
                 self._scheduler.step(test_loss)
-                logger.info(f"Learning rate: {self._optimizer.param_groups[0]['lr']} at epoch {epoch+1}.")
+                logger.info(f"Learning rate: {self._optimizer.param_groups[0]['lr']:6f} at epoch {epoch+1}.")
             else:
                 self._scheduler.step()
-                logger.info(f"Learning rate: {self._optimizer.param_groups[0]['lr']} at epoch {epoch+1}.")
+                logger.info(f"Learning rate: {self._optimizer.param_groups[0]['lr']:6f} at epoch {epoch+1}.")
             
             self._writer.add_scalar('Test Accuracy', test_acc, epoch)
             self._writer.add_scalar('Test Loss', test_loss, epoch)

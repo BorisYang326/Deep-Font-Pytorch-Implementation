@@ -25,5 +25,5 @@ class TrainConfig:
     num_workers: int = 16
     prefetch_factor: int = 2
     lr: float = 1e-4
-    weight_decay: float = 1e-5
+    weight_decay: float = 0.0
     gradient_log_iter: int = 100
