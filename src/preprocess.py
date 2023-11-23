@@ -422,7 +422,7 @@ TRANSFORMS_TRAIN_UNSUPERVISED = transforms.Compose(
         FixedHeightResize(INPUT_SIZE),
         # Squeezing(INPUT_SIZE, SQUEEZE_RATIO),
         transforms.RandomCrop(INPUT_SIZE),
-        # transforms.ToTensor(),
+        transforms.ToTensor(),
     ]
 )
 

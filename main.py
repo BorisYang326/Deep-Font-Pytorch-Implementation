@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 cs = ConfigStore.instance()
 cs.store(group="training", name="base_training_default", node=TrainConfig)
 
-torch.cuda.set_device(1)
+# torch.cuda.set_device(1)
 
 # need to set hydra.job.chdir=True first for version 1.2
 @hydra.main(config_path="config", config_name="main", version_base='1.2')
@@ -33,7 +33,7 @@ def main(cfg: DictConfig) -> None:
             # collate_fn=custom_collate_fn,
         )
         eval_loader = None
-    elif model_name in ['CNN', 'ResNet']:
+    elif model_name in ['CNN', 'FontResNet']:
         cfg.dataset.hdf5_file_path = cfg.train_hdf5_file_path
         supervised_train_dataset = instantiate(cfg.dataset)
         supervised_train_dataset.transform = TRANSFORMS_STORE[cfg.transforms]

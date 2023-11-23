@@ -183,5 +183,4 @@ def main():
 
 
 if __name__ == '__main__':
-    # main()
-    split_hdf5('/public/dataset/AdobeVFR/hdf5/real/VFR_real_label_full.hdf5','/public/dataset/AdobeVFR/hdf5/real/VFR_real_label_train.hdf5','/public/dataset/AdobeVFR/hdf5/real/VFR_real_label_eval.hdf5')
+    main()

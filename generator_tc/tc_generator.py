@@ -24,7 +24,7 @@ from PIL import Image
 # )
 generator_H = GeneratorFromStrings(
     strings=['Adviser'],
-    fonts=['/home/yangbo/projects/font_recog/generator_tc/font_source/Copal-Std-Outline.ttf'],
+    fonts=['/home/yangbo/projects/font_recog/generator_tc/font_source/Cou.ttf'],
     count =2,
     size=105,
     random_skew=True,
