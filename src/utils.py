@@ -18,6 +18,16 @@ from .config import (
 )
 import random
 
+class VoidScheduler(object):
+    """
+    Scheduler that does not change anything
+    """
+
+    def __init__(self, optimizer):
+        pass
+
+    def step(self):
+        pass
 
 def syn_images_to_hdf5(root_dir: str, hdf5_file_path: str):
     """convert the synthetic images of AdobeVFR dataset to HDF5 file.

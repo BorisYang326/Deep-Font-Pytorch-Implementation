@@ -59,13 +59,16 @@ class SCAE(nn.Module):
 
     def _load_weights(self, path: str) -> None:
         # Load the state_dict
-        state_dict = torch.load(path)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # map location for loading onto different cuda devices
+        state_dict = torch.load(path, map_location=device)
 
         # Check if the model was parallelized during training
         if 'module' in list(state_dict.keys())[0]:
             # If it was parallelized, we need to remove the 'module.' prefix from keys
             state_dict = {k[7:]: v for k, v in state_dict.items()}
         self.load_state_dict(state_dict)
+
     
     @property
     def name(self) -> str:
@@ -90,7 +93,7 @@ class CNN(nn.Module):
         self._finetune_ratio = finetune_ratio
         if self._use_SCAE:
             self._scae._load_weights(encoder_weight_path)
-            logger.info("Using SCAE weights")
+            logger.info("Using SCAE weights from {}".format(encoder_weight_path))
             self.Cu = nn.Sequential(
                 self._scae.encoder.conv1,
                 nn.ReLU(),  # output shape: 64 * 48 * 48
@@ -145,7 +148,9 @@ class CNN(nn.Module):
 
     def _load_weights(self, path) -> None:
         # Load the state_dict
-        state_dict = torch.load(path)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # map location for loading onto different cuda devices
+        state_dict = torch.load(path, map_location=device)
 
         # Check if the model was parallelized during training
         if 'module' in list(state_dict.keys())[0]:
@@ -231,7 +236,9 @@ class FontResNet(nn.Module):
 
     def _load_weights(self, path: str) -> None:
         # Load the state_dict
-        state_dict = torch.load(path)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # map location for loading onto different cuda devices
+        state_dict = torch.load(path, map_location=device)
 
         # Check if the model was parallelized during training
         if 'module' in list(state_dict.keys())[0]:

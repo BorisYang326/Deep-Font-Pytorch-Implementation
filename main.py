@@ -6,8 +6,7 @@ from hydra.core.config_store import ConfigStore
 from src.config import TrainConfig
 from hydra.utils import instantiate
 import logging
-from src.preprocess import TRANSFORMS_STORE,collate_fn_PIL
-import torch
+from src.preprocess import TRANSFORMS_STORE
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +61,14 @@ def main(cfg: DictConfig) -> None:
     model = instantiate(cfg.model)
     optim_groups = model._optim_groups(cfg.training.lr)
     optimizer = instantiate(cfg.optimizer)(params=optim_groups)
+    scheduler = instantiate(cfg.scheduler)(optimizer)
     ## Trainer ##
     criterion = nn.MSELoss() if model_name == 'SCAE' else nn.CrossEntropyLoss()
     logger.info(f"Criterion: {criterion}")
     trainer = instantiate(cfg.trainer)(
         model=model,
         optimizer=optimizer,
+        scheduler=scheduler,
         criterion=criterion,
         train_loader=train_loader,
         eval_loader=eval_loader,

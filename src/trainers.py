@@ -9,9 +9,10 @@ from typing import Optional
 from torch.utils.data import DataLoader
 import os
 from collections import defaultdict
-from typing import Tuple, Dict,List
+from typing import Tuple, Dict,List,Any
 import pickle
 from einops import rearrange
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from PIL import Image
 from .config import INPUT_SIZE, SQUEEZE_RATIO_RANGE, RATIO_SAMPLES, PATCH_SAMPLES
 from .preprocess import Squeezing
@@ -24,6 +25,7 @@ class Trainer:
         self,
         model: nn.Module,
         optimizer: Optimizer,
+        scheduler: Any,
         criterion: F,
         device: torch.device,
         train_loader: DataLoader,
@@ -34,6 +36,7 @@ class Trainer:
     ):
         self._model = model.to(device)
         self._optimizer = optimizer
+        self._scheduler = scheduler
         self._criterion = criterion
         self._device = device
         self._train_loader = train_loader
@@ -41,6 +44,14 @@ class Trainer:
         self._save_path = save_path
         self._log_step = log_step
         self._writer = SummaryWriter(log_dir=log_dir)
+        self._model_name = model.name
+        if torch.cuda.is_available():
+            model = model.cuda()  
+
+        if torch.cuda.device_count() > 1:
+            self._model = nn.DataParallel(model)
+        else:
+            self._model = model
 
     def _train(self, epochs: int):
         raise NotImplementedError
@@ -73,6 +84,7 @@ class SCAETrainer(Trainer):
         self,
         model: nn.Module,
         optimizer: Optimizer,
+        scheduler: Any,
         criterion: F,
         device: torch.device,
         train_loader: DataLoader,
@@ -83,6 +95,7 @@ class SCAETrainer(Trainer):
         super().__init__(
             model,
             optimizer,
+            scheduler,
             criterion,
             device,
             train_loader,
@@ -90,7 +103,6 @@ class SCAETrainer(Trainer):
             save_path,
             log_dir,
         )
-        self._model_name = model.name
 
     def _train(self, epochs: int):
         for epoch in range(epochs):
@@ -124,6 +136,7 @@ class SupervisedTrainer(Trainer):
         self,
         model: nn.Module,
         optimizer: Optimizer,
+        scheduler: Any,
         criterion: F,
         device: torch.device,
         train_loader: DataLoader,
@@ -135,6 +148,7 @@ class SupervisedTrainer(Trainer):
         super().__init__(
             model,
             optimizer,
+            scheduler,
             criterion,
             device,
             train_loader,
@@ -143,17 +157,20 @@ class SupervisedTrainer(Trainer):
             log_dir,
             log_step,
         )
-        self._model_name = model.name
-        if torch.cuda.device_count() > 1:
-            self._model = nn.DataParallel(model)
-        else:
-            self._model = model
 
     def _train(self, epochs: int):
         best_acc = 0.0
         for epoch in range(epochs):
             self._train_epoch(epoch)
             test_loss, test_acc, class_acc_dic = self._evaluate()
+            if isinstance(self._scheduler, ReduceLROnPlateau):
+                self._scheduler.step(test_loss)
+                # 1 for CNN cs part.
+                logger.info(f"Learning rate: {self._optimizer.param_groups[1]['lr']:6f} at epoch {epoch+1}.")
+            else:
+                self._scheduler.step()
+                logger.info(f"Learning rate: {self._optimizer.param_groups[1]['lr']:6f} at epoch {epoch+1}.")
+            
             self._writer.add_scalar('Test Accuracy', test_acc, epoch)
             self._writer.add_scalar('Test Loss', test_loss, epoch)
             # self._writer.add_histogram(
@@ -164,7 +181,7 @@ class SupervisedTrainer(Trainer):
             logger.info(f"Test accuracy: {test_acc:.4f} at epoch {epoch+1}.")
             logger.info(f"Test loss: {test_loss:.4f} at epoch {epoch+1}.")
             if test_acc > best_acc:
-                self._save_weights(epoch)
+                self._save_weights(epoch+1)
                 # save class accuracy
                 with open(os.path.join(self._save_path, 'class_accuracy.pkl'), 'wb') as handle:
                     pickle.dump(class_acc_dic, handle, protocol=pickle.HIGHEST_PROTOCOL)
